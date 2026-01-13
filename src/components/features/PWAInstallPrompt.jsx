@@ -1,25 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Share, PlusSquare, X } from 'lucide-react';
+import { Share, PlusSquare, ArrowUp, Brain } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function PWAInstallPrompt() {
     const [showPrompt, setShowPrompt] = useState(false);
-    const [isIOS, setIsIOS] = useState(false);
+    const [shouldBounce, setShouldBounce] = useState(false);
 
     useEffect(() => {
         // Check if running in standalone mode (PWA)
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-
         if (isStandalone) return;
 
         // Check if iOS
         const userAgent = window.navigator.userAgent.toLowerCase();
         const ios = /iphone|ipad|ipod/.test(userAgent);
-        setIsIOS(ios);
 
-        // Show prompt if not standalone
-        // Delay slightly for effect
-        setTimeout(() => setShowPrompt(ios), 1000);
+        // ONLY show if iOS and NOT standalone
+        if (ios) {
+            setShowPrompt(true);
+            // Delay bounce by 10 seconds
+            const bounceTimer = setTimeout(() => setShouldBounce(true), 10000);
+            return () => clearTimeout(bounceTimer);
+        }
     }, []);
 
     if (!showPrompt) return null;
@@ -30,51 +33,67 @@ export default function PWAInstallPrompt() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-end pb-12 px-6"
+                className="fixed inset-0 z-[200] bg-background flex flex-col items-center justify-between p-8 text-center overflow-hidden"
             >
-                <motion.div
-                    initial={{ y: 100, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    className="w-full max-w-sm bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 relative shadow-2xl"
-                >
-                    <button
-                        onClick={() => setShowPrompt(false)}
-                        className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
+                {/* Background Glows (Optimized for Safari) */}
+                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full pointer-events-none transform-gpu" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[100px] rounded-full pointer-events-none transform-gpu" />
 
-                    <div className="flex flex-col items-center text-center space-y-4">
-                        <div className="w-16 h-16 rounded-2xl bg-black border border-white/10 flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.2)]">
-                            <img src="/icon-192.png" alt="App Icon" className="w-full h-full rounded-2xl object-cover" />
+                {/* Top Guide Indicator (Main for Chrome iOS / iPad / newer iOS) */}
+                <div className={cn(
+                    "absolute top-8 right-8 flex flex-col items-center opacity-90 z-[210] transition-transform duration-500",
+                    shouldBounce ? "animate-bounce" : "scale-90 opacity-40"
+                )}>
+                    <ArrowUp className="text-primary w-10 h-10 drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                    <span className="text-[10px] uppercase font-bold tracking-[0.2em] text-primary mt-2">Tap Share</span>
+                </div>
+
+                {/* Main Content - Moved up by 20px via mt-[-20px] or adjustment */}
+                <div className="flex-1 flex flex-col items-center justify-center max-w-sm w-full space-y-12 -mt-10">
+                    <div className="relative">
+                        <div className="absolute inset-0 bg-primary/30 blur-2xl rounded-full transform-gpu scale-125" />
+                        <div className="relative w-24 h-24 bg-black border border-white/10 rounded-3xl flex items-center justify-center shadow-2xl">
+                            <Brain size={48} className="text-primary" />
                         </div>
-
-                        <div className="space-y-1">
-                            <h3 className="text-lg font-bold text-white tracking-wide">Install Pocket Memory</h3>
-                            <p className="text-sm text-white/60 leading-relaxed">
-                                Add to your home screen for the best experience.
-                            </p>
-                        </div>
-
-                        {isIOS ? (
-                            <div className="w-full bg-white/5 rounded-xl p-4 text-sm text-white/80 space-y-3 mt-2 border border-white/5">
-                                <div className="flex items-center gap-3">
-                                    <Share size={20} className="text-blue-400" />
-                                    <span>Tap the <span className="font-bold text-white">Share</span> button</span>
-                                </div>
-                                <div className="h-px bg-white/10 w-full" />
-                                <div className="flex items-center gap-3">
-                                    <PlusSquare size={20} className="text-gray-400" />
-                                    <span>Select <span className="font-bold text-white">Add to Home Screen</span></span>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-xs text-white/50 italic">
-                                Tap the menu button and select "Add to Home Screen"
-                            </div>
-                        )}
                     </div>
-                </motion.div>
+
+                    <div className="space-y-4">
+                        <h1 className="text-4xl font-bold tracking-tight text-white leading-tight">
+                            Pocket <span className="text-primary">Memory</span>
+                        </h1>
+                        <p className="text-muted-foreground text-lg leading-relaxed px-4">
+                            Your second brain, now ready for your Home Screen.
+                        </p>
+                    </div>
+
+                    <div className="w-full bg-secondary/30 backdrop-blur-xl border border-white/5 rounded-3xl p-8 space-y-8 transform-gpu">
+                        <div className="flex items-center gap-6 text-left">
+                            <div className="flex-shrink-0 w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center">
+                                <Share className="text-blue-400 w-6 h-6" />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="text-sm font-bold text-white uppercase tracking-wider">Step 1</div>
+                                <div className="text-sm text-white/70 leading-snug">
+                                    Tap the <span className="text-white font-medium">Share</span> button above
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="w-full h-px bg-white/5" />
+
+                        <div className="flex items-center gap-6 text-left">
+                            <div className="flex-shrink-0 w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center">
+                                <PlusSquare className="text-gray-400 w-6 h-6" />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="text-sm font-bold text-white uppercase tracking-wider">Step 2</div>
+                                <div className="text-sm text-white/70 leading-snug">
+                                    Scroll down and select <span className="text-white font-medium">Add to Home Screen</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </motion.div>
         </AnimatePresence>
     );

@@ -22,7 +22,7 @@ export default function StickyNav() {
                             isActive ? "text-white bg-secondary" : "text-muted-foreground"
                         )}
                     >
-                        <Layers size={24} />
+                        <Layers size={28} />
                     </NavLink>
 
                     {/* Center: Brain (Home) */}
@@ -46,7 +46,7 @@ export default function StickyNav() {
 
                                 {/* Brain Icon */}
                                 <div className="relative z-10 bg-background rounded-full p-3.5 border border-white/10">
-                                    <Brain size={28} className={cn("transition-colors", isActive ? "text-primary" : "text-muted-foreground group-hover:text-white")} />
+                                    <Brain size={32} className={cn("transition-colors", isActive ? "text-primary" : "text-muted-foreground group-hover:text-white")} />
                                 </div>
                             </>
                         )}
@@ -60,7 +60,7 @@ export default function StickyNav() {
                             isActive ? "text-white bg-secondary" : "text-muted-foreground"
                         )}
                     >
-                        <Search size={24} />
+                        <Search size={28} />
                     </NavLink>
                 </nav>
             </div>
