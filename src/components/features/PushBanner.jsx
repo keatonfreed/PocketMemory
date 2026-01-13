@@ -8,10 +8,8 @@ export default function PushBanner() {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        // Only show if not granted and not dismissed in this session (optional logic)
-        // For now, we always show if not granted, so they can enable it.
-        // If denied, we might not want to annoy them, but the user asked to "bring it back next time".
-        if (Notification.permission === 'default') {
+        // Safe check for Notification API (might be missing in non-PWA iOS Chrome)
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
             setVisible(true);
         }
     }, []);

@@ -2,10 +2,12 @@ import React from 'react'
 import CaptureBox from '@/components/features/CaptureBox'
 import MemoryFeed from '@/components/features/MemoryFeed'
 import PushBanner from '@/components/features/PushBanner'
+import PWAInstallPrompt from '@/components/features/PWAInstallPrompt'
 
 export default function Home() {
     return (
         <div className="min-h-full flex flex-col relative">
+            <PWAInstallPrompt />
             <PushBanner />
 
             <div className="flex-1 flex flex-col w-full justify-center min-h-[60vh] pt-12 px-6">
