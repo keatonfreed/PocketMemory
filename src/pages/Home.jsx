@@ -13,7 +13,7 @@ export default function Home() {
             <div className="flex-1 flex flex-col w-full justify-center min-h-[60vh] pt-12 px-6">
                 {/* Header - Subtle */}
                 <header className="flex justify-center mb-12 opacity-50">
-                    <div className="uppercase tracking-[0.3em] text-[10px] text-muted-foreground">Pocket Memory</div>
+                    <div className="uppercase tracking-[0.3em] text-[13px] text-muted-foreground">Pocket Memory</div>
                 </header>
 
                 {/* Main Input - Centered in this view */}

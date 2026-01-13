@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { analyzeContent } from '@/lib/ai'
 import useMemoryStore from '@/hooks/useMemoryStore'
-import { Sparkles, ArrowUp } from 'lucide-react'
+import { Sparkles, ArrowUp, Mic } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { v4 as uuidv4 } from 'uuid' // using crypto in store, but good to have handy if needed. we'll use optimistic updates.
 
@@ -14,7 +14,111 @@ export default function CaptureBox() {
     const [animKey, setAnimKey] = useState(0)
     const [triggerAnim, setTriggerAnim] = useState(false)
     const [introSequence, setIntroSequence] = useState(true) // Track initial load state
+    const [isListening, setIsListening] = useState(false)
+    const recognitionRef = React.useRef(null)
+    const inputRef = React.useRef(input) // Keep track of latest input
+    const isListeningRef = React.useRef(false)
     const triggerDuration = React.useRef(2000)
+
+    useEffect(() => {
+        inputRef.current = input
+    }, [input])
+
+    // STT Initialization
+    useEffect(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        recognitionRef.current = recognition;
+
+        let baseInputOnStart = "";
+
+        recognition.onstart = () => {
+            baseInputOnStart = inputRef.current;
+            setIsListening(true);
+            isListeningRef.current = true;
+        };
+
+        recognition.onresult = (event) => {
+            if (!isListeningRef.current) return;
+
+            let interimTranscript = "";
+            let finalTranscript = "";
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+
+            if (finalTranscript || interimTranscript) {
+                const newText = baseInputOnStart + (baseInputOnStart ? " " : "") + finalTranscript + interimTranscript;
+                setInput(newText);
+            }
+
+            if (finalTranscript) {
+                baseInputOnStart += (baseInputOnStart ? " " : "") + finalTranscript;
+            }
+        };
+
+        recognition.onend = () => {
+            setIsListening(false);
+            isListeningRef.current = false;
+        };
+
+        recognition.onerror = (event) => {
+            if (event.error === 'no-speech') return;
+            console.error("Speech Recognition Error", event.error);
+            setIsListening(false);
+            isListeningRef.current = false;
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.hidden && isListeningRef.current) {
+                recognition.stop();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            recognition.stop();
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
+    const stopListening = () => {
+        if (recognitionRef.current && isListeningRef.current) {
+            isListeningRef.current = false; // Immediate flag change to ignore late results
+            recognitionRef.current.stop();
+            setIsListening(false);
+        }
+    };
+
+    const toggleListening = () => {
+        if (!recognitionRef.current) {
+            alert("Speech recognition is not supported in this browser.");
+            return;
+        }
+
+        if (isListening) {
+            stopListening();
+        } else {
+            try {
+                recognitionRef.current.start();
+                // isListening/isListeningRef will be set in onstart
+                setIsFocused(true); // Focus textarea when starting to speak
+            } catch (err) {
+                console.error("Recognition start failed", err);
+            }
+        }
+    };
 
     // Track if the border is currently visible (opacity > 0)
     // This prevents resetting the rotation angle if we focus while it's still fading out
@@ -72,11 +176,24 @@ export default function CaptureBox() {
     const handleKeyDown = async (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
-            if (!input.trim()) return
+            if (!input.trim() && !isListening) return
 
-            const content = input;
-            setInput('')
             setIsProcessing(true)
+
+            // If we are listening, wait a tiny bit to catch any final results before grabbing state
+            if (isListening) {
+                stopListening()
+                await new Promise(r => setTimeout(r, 600))
+            }
+
+            // Get latest input after possible buffer delay
+            const content = inputRef.current
+            if (!content.trim()) {
+                setIsProcessing(false)
+                return
+            }
+
+            setInput('')
 
             // 1. Optimistic Update (Immediate feedback)
             const optimisticId = crypto.randomUUID();
@@ -214,18 +331,45 @@ export default function CaptureBox() {
                     <div className="flex justify-between items-center px-2 pb-2">
                         <div className="flex gap-2"></div>
 
-                        <button
-                            disabled={!input.trim()}
-                            onClick={() => handleKeyDown({ key: 'Enter', preventDefault: () => { } })}
-                            className={cn(
-                                "p-2 rounded-full transition-all duration-300 flex items-center justify-center",
-                                input.trim()
-                                    ? "bg-primary text-white shadow-[0_0_15px_rgba(59,130,246,0.5)] scale-100"
-                                    : "bg-zinc-800 text-zinc-600 scale-90"
-                            )}
-                        >
-                            {isProcessing ? <Sparkles size={20} className="animate-spin text-white" /> : <ArrowUp size={20} />}
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={toggleListening}
+                                className={cn(
+                                    "w-10 h-10 rounded-full transition-all duration-500 flex items-center justify-center relative shrink-0",
+                                    isListening
+                                        ? "bg-primary text-white scale-110 shadow-[0_0_20px_rgba(59,130,246,0.6)]"
+                                        : "bg-zinc-800 text-zinc-500 hover:text-zinc-300 transform-gpu safari-blur-fix"
+                                )}
+                            >
+                                {isListening && (
+                                    <motion.div
+                                        layoutId="mic-pulse"
+                                        initial={{ scale: 0.8, opacity: 0 }}
+                                        animate={{ scale: 1.4, opacity: 0.3 }}
+                                        transition={{
+                                            repeat: Infinity,
+                                            duration: 1.5,
+                                            ease: "easeOut"
+                                        }}
+                                        className="absolute inset-0 rounded-full bg-primary"
+                                    />
+                                )}
+                                <Mic size={20} className={cn(isListening && "text-white")} />
+                            </button>
+
+                            <button
+                                disabled={!input.trim() && !isListening}
+                                onClick={() => handleKeyDown({ key: 'Enter', preventDefault: () => { } })}
+                                className={cn(
+                                    "w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center shrink-0",
+                                    (input.trim() || isListening)
+                                        ? "bg-primary text-white shadow-[0_0_15px_rgba(59,130,246,0.5)] scale-100"
+                                        : "bg-zinc-800 text-zinc-600 scale-95"
+                                )}
+                            >
+                                {isProcessing ? <Sparkles size={20} className="animate-spin text-white" /> : <ArrowUp size={20} />}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </motion.div>
