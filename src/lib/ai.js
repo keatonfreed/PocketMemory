@@ -1,47 +1,21 @@
-import OpenAI from 'openai';
-
-// Initialize OpenAI Client
-// DANGER: Client-side usage requires dangerouslyAllowBrowser: true
-// In a real app, this should go through a backend proxy.
-const openai = new OpenAI({
-    apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-    dangerouslyAllowBrowser: true
-});
-
 /**
- * Analyzes content using OpenAI GPT-4o-mini (or available).
+ * Analyzes content using the server-side API.
  */
 export async function analyzeContent(text) {
-    if (!import.meta.env.VITE_OPENAI_API_KEY) {
-        console.warn("No API Key found, falling back to basic");
-        return fallbackAnalysis(text);
-    }
-
     try {
-        const completion = await openai.chat.completions.create({
-            messages: [
-                {
-                    role: "system",
-                    content: `You are a "second brain" assistant. Analyze the user's input and return a JSON object with:
-            - title: smooth short title
-            - summary: concise 1-sentence summary
-            - tags: array of 2-4 strings (lowercase, relevant)
-            - type: one of "link", "task", "idea", "note", "question"
-            - entities: array of 1-3 key people/projects/tech mentioned
-            
-            Return ONLY valid JSON.`
-                },
-                { role: "user", content: text }
-            ],
-            model: "gpt-5-mini",
-            response_format: { type: "json_object" }
+        const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text }),
         });
 
-        const result = JSON.parse(completion.choices[0].message.content);
-        return {
-            ...result,
-            createdAt: new Date().toISOString()
-        };
+        if (!response.ok) {
+            throw new Error('Analysis failed');
+        }
+
+        return await response.json();
 
     } catch (error) {
         console.error("AI Error:", error);
@@ -51,46 +25,28 @@ export async function analyzeContent(text) {
 
 /**
  * Asks a question using RAG (Retrieval Augmented Generation) on local memories.
- */
-/**
- * Asks a question using RAG (Retrieval Augmented Generation) on local memories.
  * Returns an async generator that yields text chunks (Streaming).
  */
-export async function* askQuestionStream(question, contextMemories) {
-    if (!import.meta.env.VITE_OPENAI_API_KEY) {
-        yield "Please set your VITE_OPENAI_API_KEY in .env to use the AI features.";
-        return;
-    }
-
+export async function* askQuestionStream(messages, contextMemories) {
     try {
-        const contextString = contextMemories.map(m =>
-            `- [${m.type}] ${m.title}: ${m.summary} (${m.tags.join(', ')})`
-        ).join('\n');
-
-        // New "Response" scaffolding structure requested by user
-        // Using standard streaming with updated input format
-        const stream = await openai.chat.completions.create({
-            model: "gpt-5-mini", // User requested model
-            messages: [
-                {
-                    role: "developer", // "developer" role as requested (replaces system in new models)
-                    content: `You are Pocket Memory, a helpful assistant. Use the provided memory context to answer the user's question. 
-                    If the answer isn't in the context, say so, but try to be helpful based on general knowledge if implied.
-                    Keep answers concise and conversational.`
-                },
-                {
-                    role: "user",
-                    content: `Context:\n${contextString}\n\nQuestion: ${question}`
-                }
-            ],
-            stream: true,
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ messages, contextMemories }),
         });
 
-        for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content || "";
-            if (content) {
-                yield content;
-            }
+        if (!response.ok) throw new Error("Network response was not ok");
+        if (!response.body) throw new Error("No response body");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            yield decoder.decode(value, { stream: true });
         }
 
     } catch (error) {
@@ -100,7 +56,7 @@ export async function* askQuestionStream(question, contextMemories) {
 }
 
 function fallbackAnalysis(text) {
-    // Basic fallback if no key
+    // Basic fallback if API fails
     const type = text.includes("http") ? "link" : "note";
     return {
         title: text.slice(0, 20) + "...",

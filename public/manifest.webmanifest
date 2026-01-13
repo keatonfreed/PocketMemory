@@ -1,10 +1,11 @@
 {
     "name": "Pocket Memory",
-    "short_name": "PocketMem",
+    "short_name": "Pocket",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#000000",
-    "theme_color": "#000000",
+    "background_color": "#09090b",
+    "theme_color": "#09090b",
+    "orientation": "portrait",
     "icons": [
         {
             "src": "/icon-192.png",

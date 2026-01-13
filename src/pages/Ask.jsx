@@ -89,8 +89,11 @@ export default function Ask() {
         // Note: We don't add the message yet to avoid an empty box. 
         // We wait for the first chunk to replace the loading indicator.
 
+        // Create the new history including the user's latest message
+        const newHistory = [...messages, { role: 'user', content: userMsg }]
+
         try {
-            const stream = askQuestionStream(userMsg, relevant)
+            const stream = askQuestionStream(newHistory, relevant)
 
             let fullContent = ""
             let isFirstChunk = true
