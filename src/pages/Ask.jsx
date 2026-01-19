@@ -186,7 +186,7 @@ export default function Ask() {
             </div>
 
             <div className="h-fit left-0 w-full px-4 z-40 pointer-events-none">
-                <div className="max-w-md mx-auto pointer-events-auto relative mt-4">
+                <div className="w-full mx-auto pointer-events-auto relative mt-4">
                     <div className="absolute inset-0 bg-primary/5 blur-xl rounded-full" />
                     <input
                         value={input}

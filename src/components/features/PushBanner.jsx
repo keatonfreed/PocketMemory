@@ -40,7 +40,7 @@ export default function PushBanner() {
                     exit={{ height: 0, opacity: 0, paddingTop: 0 }}
                     className="relative bg-primary/10 border-b border-primary/20 overflow-hidden"
                 >
-                    <div className="flex items-center justify-between px-4 py-3 max-w-md mx-auto">
+                    <div className="flex items-center justify-between px-4 py-3 w-full mx-auto">
                         <div className="flex items-center gap-3">
                             <div className="p-1.5 bg-primary/20 rounded-full text-primary">
                                 <Bell size={14} />

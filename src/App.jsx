@@ -32,7 +32,7 @@ function App() {
             <div className="h-dvh max-h-dvh bg-background text-foreground relative font-sans antialiased overflow-hidden">
                 <div className="bg-noise" />
                 <TopScrollOnNavigate scrollRef={scrollRef} />
-                <main className="relative z-10 h-full w-full max-w-md mx-auto border-x border-border/50 shadow-2xl bg-background/50 backdrop-blur-3xl flex flex-col overflow-hidden">
+                <main className="relative z-10 h-full w-full max-w-[500px] mx-auto shadow-2xl bg-background/50 backdrop-blur-3xl flex flex-col overflow-hidden">
                     <ErrorBoundary>
                         <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar scroll-smooth relative w-full">
                             <Routes>
