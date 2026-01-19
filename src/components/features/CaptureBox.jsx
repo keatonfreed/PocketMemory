@@ -276,7 +276,9 @@ export default function CaptureBox() {
                 // If fading out (hiding) AND in intro, slow (2500ms).
                 // Else (hiding normal), fast (500ms).
                 (isFocused || triggerAnim) ? "duration-500" : (introSequence ? "duration-[2500ms]" : "duration-500")
-            )} />
+            )} >
+                <div className='absolute -inset-10 '></div>
+            </div>
             <div className={cn(
                 "absolute top-0 bottom-0 w-[20%] rounded-2xl bg-linear-to-b from-cyan-500 via-primary to-cyan-500 opacity-0 blur-lg transition-opacity ease-in-out animate-[blur-shake_3000ms_cubic-bezier(0.35,_0,_0.65,_1)_infinite,blur-rotate_600ms_linear_infinite_alternate]",
                 // Opacity Logic:
