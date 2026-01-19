@@ -35,9 +35,9 @@ export default function PushBanner() {
         <AnimatePresence>
             {visible && (
                 <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
+                    initial={{ height: 0, opacity: 0, paddingTop: 0 }}
+                    animate={{ height: 'auto', opacity: 1, paddingTop: 'env(safe-area-inset-top)' }}
+                    exit={{ height: 0, opacity: 0, paddingTop: 0 }}
                     className="relative bg-primary/10 border-b border-primary/20 overflow-hidden"
                 >
                     <div className="flex items-center justify-between px-4 py-3 max-w-md mx-auto">

@@ -19,7 +19,7 @@
   --color-secondary-foreground: #a1a1aa;
 
   --color-muted: #71717a;
-  --color-muted-foreground: #a1a1aa;
+  --color-muted-foreground: #afafb6;
 
   --color-accent: #3b82f6;
   --color-accent-foreground: #ffffff;
@@ -59,6 +59,19 @@
 /* Base Styles */
 :root {
   color-scheme: dark;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
 }
 
 body {
@@ -119,4 +132,32 @@ body {
   height: 100%;
   z-index: 50;
   opacity: 0.04;
+}
+
+@keyframes blur-shake {
+  0% {
+    left: 10%;
+    translate: -50% 0;
+  }
+
+  50% {
+    left: 90%;
+    translate: -50% 0;
+  }
+
+  100% {
+    left: 10%;
+    translate: -50% 0;
+  }
+}
+
+@keyframes blur-rotate {
+  0% {
+    rotate: -20deg;
+  }
+
+
+  100% {
+    rotate: 20deg;
+  }
 }

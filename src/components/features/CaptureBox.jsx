@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { analyzeContent } from '@/lib/ai'
-import useMemoryStore from '@/hooks/useMemoryStore'
+import { queryMemory } from '@/lib/ai'
+import useDocuments from '@/hooks/useDocuments'
 import { Sparkles, ArrowUp, Mic } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { v4 as uuidv4 } from 'uuid' // using crypto in store, but good to have handy if needed. we'll use optimistic updates.
 
 export default function CaptureBox() {
+    const navigate = useNavigate()
+
     const [input, setInput] = useState('')
     const [isProcessing, setIsProcessing] = useState(false)
     const [isFocused, setIsFocused] = useState(false)
@@ -125,8 +128,7 @@ export default function CaptureBox() {
     const isVisibleRef = React.useRef(false)
     const visibilityTimer = React.useRef(null)
 
-    const addMemory = useMemoryStore(state => state.addMemory)
-    const updateMemory = useMemoryStore(state => state.updateMemory)
+    const userDocuments = useDocuments()
 
     // Visibility Tracking Effect
     useEffect(() => {
@@ -195,33 +197,57 @@ export default function CaptureBox() {
 
             setInput('')
 
-            // 1. Optimistic Update (Immediate feedback)
-            const optimisticId = crypto.randomUUID();
-            addMemory({
-                id: optimisticId,
-                content: content,
-                title: "Processing...",
-                summary: "AI is analyzing this thought...",
-                tags: ["processing"],
-                type: "note",
-                entities: [],
-                createdAt: new Date().toISOString()
-            })
-
-            setJustSaved(true)
+            // setJustSaved(true)
             setIsFocused(false) // Unfocus to show feed
 
             // 2. Async AI Analysis
             try {
-                const data = await analyzeContent(content)
-                updateMemory(optimisticId, data)
+                let context = userDocuments.getDocuments()
+                context = context.map(m => ({
+                    docId: m.docId,
+                    docTitle: m.docTitle,
+                    docSummary: m.docSummary,
+                    docTags: m.docTags,
+                    docType: m.docType,
+                }))
+                const data = await queryMemory(content, context)
+                console.log("Query Memory Response:", data);
+                if (data?.actions) {
+                    data.actions.forEach(action => {
+                        switch (action.actionType) {
+                            case "createDocument":
+                                userDocuments.createDocument({
+                                    docId: crypto.randomUUID(),
+                                    docTitle: action.actionPayload.docTitle,
+                                    docContent: action.actionPayload.docContent,
+                                    docSummary: action.actionPayload.docSummary,
+                                    docTags: action.actionPayload.docTags,
+                                    docType: action.actionPayload.docType,
+                                    createdAt: new Date().toISOString(),
+                                    updatedAt: new Date().toISOString(),
+                                })
+                                setJustSaved("CAPTURED")
+                                break;
+                            case "modifyDocument":
+                                userDocuments.modifyDocument(action.actionPayload.docId, action.actionPayload)
+                                setJustSaved("CHANGED")
+                                break;
+                            case "deleteDocument":
+                                userDocuments.deleteDocument(action.actionPayload.docId)
+                                setJustSaved("DELETED")
+                                break;
+                            case "openDocument":
+                                navigate(`/document/${action.actionPayload.docId}`)
+                                setJustSaved("OPENED")
+                                break;
+                            default:
+                                console.warn("Unknown action type:", action.actionType);
+                                setJustSaved("FAILED")
+                        }
+                    })
+                }
             } catch (err) {
                 console.error("AI Failed", err)
-                updateMemory(optimisticId, {
-                    title: "Draft Note",
-                    summary: "Could not analyze automatically.",
-                    tags: ["draft"]
-                })
             } finally {
                 setIsProcessing(false)
                 setTimeout(() => setJustSaved(false), 2000)
@@ -238,12 +264,12 @@ export default function CaptureBox() {
                 - Normal Exit: Fast fade (500ms)
             */}
             <div className={cn(
-                "absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary via-cyan-500 to-primary opacity-0 blur-lg transition-opacity ease-in-out",
+                "absolute -inset-1 -inset-x-[5px] rounded-2xl bg-linear-to-r from-primary via-cyan-500 to-primary opacity-0 blur-lg transition-opacity ease-in-out",
                 // Opacity Logic:
                 // 1. Focused OR Work Pulse: Full brightness (30%)
                 // 2. Intro Pulse: Half brightness (15%) for subtle element entry
                 // 3. Resting: Hidden (0%)
-                isFocused || (triggerAnim && !introSequence) ? "opacity-30" : (triggerAnim && introSequence ? "opacity-15" : "opacity-0"),
+                isFocused || (triggerAnim && !introSequence) ? "opacity-60" : (triggerAnim && introSequence ? "opacity-30" : "opacity-0"),
 
                 // Dynamic Duration Logic:
                 // If active (showing), always fast (500ms) to appear snappy.
@@ -251,9 +277,51 @@ export default function CaptureBox() {
                 // Else (hiding normal), fast (500ms).
                 (isFocused || triggerAnim) ? "duration-500" : (introSequence ? "duration-[2500ms]" : "duration-500")
             )} />
+            <div className={cn(
+                "absolute top-0 bottom-0 w-[20%] rounded-2xl bg-linear-to-b from-cyan-500 via-primary to-cyan-500 opacity-0 blur-lg transition-opacity ease-in-out animate-[blur-shake_3000ms_cubic-bezier(0.35,_0,_0.65,_1)_infinite,blur-rotate_600ms_linear_infinite_alternate]",
+                // Opacity Logic:
+                // 1. Focused OR Work Pulse: Full brightness (30%)
+                // 2. Intro Pulse: Half brightness (15%) for subtle element entry
+                // 3. Resting: Hidden (0%)
+                isFocused || (triggerAnim && !introSequence) ? "opacity-15" : (triggerAnim && introSequence ? "opacity-15" : "opacity-0"),
+
+                // Dynamic Duration Logic:
+                // If active (showing), always fast (500ms) to appear snappy.
+                // If fading out (hiding) AND in intro, slow (2500ms).
+                // Else (hiding normal), fast (500ms).
+                (isFocused || triggerAnim) ? "duration-500" : (introSequence ? "duration-[1000ms]" : "duration-500")
+            )} />
+            <div className={cn(
+                "absolute top-0 bottom-0 w-[20%] rounded-2xl bg-linear-to-b from-cyan-500 via-primary to-cyan-500 opacity-0 blur-lg transition-opacity ease-in-out animate-[blur-shake_3000ms_cubic-bezier(0.35,_0,_0.65,_1)_infinite_1500ms,blur-rotate_600ms_linear_infinite_alternate_300ms]",
+                // Opacity Logic:
+                // 1. Focused OR Work Pulse: Full brightness (30%)
+                // 2. Intro Pulse: Half brightness (15%) for subtle element entry
+                // 3. Resting: Hidden (0%)
+                isFocused || (triggerAnim && !introSequence) ? "opacity-15" : (triggerAnim && introSequence ? "opacity-15" : "opacity-0"),
+
+                // Dynamic Duration Logic:
+                // If active (showing), always fast (500ms) to appear snappy.
+                // If fading out (hiding) AND in intro, slow (2500ms).
+                // Else (hiding normal), fast (500ms).
+                (isFocused || triggerAnim) ? "duration-500" : (introSequence ? "duration-[1000ms]" : "duration-500")
+            )} />
+            <div className={cn(
+                "absolute top-0 bottom-0 w-[20%] rounded-2xl bg-linear-to-b from-cyan-500 via-primary to-cyan-500 opacity-0 blur-lg transition-opacity ease-in-out animate-[blur-shake_2700ms_cubic-bezier(0.35,_0,_0.65,_1)_infinite_1000ms,blur-rotate_600ms_linear_infinite_alternate_300ms]",
+                // Opacity Logic:
+                // 1. Focused OR Work Pulse: Full brightness (30%)
+                // 2. Intro Pulse: Half brightness (15%) for subtle element entry
+                // 3. Resting: Hidden (0%)
+                isFocused || (triggerAnim && !introSequence) ? "opacity-15" : (triggerAnim && introSequence ? "opacity-15" : "opacity-0"),
+
+                // Dynamic Duration Logic:
+                // If active (showing), always fast (500ms) to appear snappy.
+                // If fading out (hiding) AND in intro, slow (2500ms).
+                // Else (hiding normal), fast (500ms).
+                (isFocused || triggerAnim) ? "duration-500" : (introSequence ? "duration-[1000ms]" : "duration-500")
+            )} />
 
             <motion.div
-                className="relative rounded-2xl bg-black border border-white/10 overflow-hidden"
+                className="relative rounded-2xl bg-black overflow-hidden border-none"
                 animate={{ scale: isFocused ? 1.02 : 1 }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
             >
@@ -265,16 +333,23 @@ export default function CaptureBox() {
                     // 2. Focused (Decay): Opacity 30, Slow duration (3s fade out to visible glow)
                     // 3. Intro (First Load): Opacity 0, Medium duration (1.5s) for nice intro fade
                     // 4. Blurred (Normal Exit): Opacity 0, Fast duration (500ms) for snappy UI
-                    triggerAnim
-                        ? "opacity-100 duration-0"
-                        : isFocused
-                            ? "opacity-30 duration-[3000ms]"
-                            : introSequence ? "opacity-0 duration-[1500ms]" : "opacity-0 duration-500"
                 )}>
+                    {/* Under Solid Border */}
+                    <div
+                        key={`solid`}
+                        className={cn("absolute w-[150%] aspect-square transition-[opacity,background] ease-out duration-500  bg-border", triggerAnim || isFocused
+                            ? "opacity-70"
+                            : "opacity-100")}
+                    />
+
                     {/* Primary Slow Beam (Blue) */}
                     <div
                         key={`beam1-${animKey}`}
-                        className="absolute w-[150%] aspect-square animate-[spin_3s_linear_infinite]"
+                        className={cn("absolute w-[150%] aspect-square animate-[spin_3s_linear_infinite]", triggerAnim
+                            ? "opacity-100 duration-0"
+                            : isFocused
+                                ? "opacity-70 duration-[3000ms]"
+                                : introSequence ? "opacity-0 duration-[1500ms]" : "opacity-0 duration-500")}
                         style={{
                             background: `conic-gradient(from 0deg, 
                                 transparent 0deg, 
@@ -287,7 +362,11 @@ export default function CaptureBox() {
                     {/* Secondary Fast Beam (Lighter Blue) - Same direction, wider, catching up */}
                     <div
                         key={`beam2-${animKey}`}
-                        className="absolute w-[150%] aspect-square animate-[spin_2s_linear_infinite] mix-blend-plus-lighter opacity-60"
+                        className={cn("absolute w-[150%] aspect-square animate-[spin_2s_linear_infinite] mix-blend-plus-lighter opacity-60", triggerAnim
+                            ? "opacity-100 duration-0"
+                            : isFocused
+                                ? "opacity-70 duration-[3000ms]"
+                                : introSequence ? "opacity-0 duration-[1500ms]" : "opacity-0 duration-500")}
                         style={{
                             background: `conic-gradient(from 180deg, 
                                 transparent 0deg, 
@@ -299,7 +378,7 @@ export default function CaptureBox() {
                 </div>
 
                 {/* Inner Content Surface - Increased margin for thicker border */}
-                <div className="relative z-10 m-[2px] bg-card rounded-[14px] p-1 h-full min-h-[120px] flex flex-col">
+                <div className="relative z-10 m-[2px] bg-card rounded-[15px] p-1 h-full min-h-[120px] flex flex-col ">
                     <textarea
                         value={input}
                         onChange={e => setInput(e.target.value)}
@@ -331,11 +410,11 @@ export default function CaptureBox() {
                     <div className="flex justify-between items-center px-2 pb-2">
                         <div className="flex gap-2"></div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                             <button
                                 onClick={toggleListening}
                                 className={cn(
-                                    "w-10 h-10 rounded-full transition-all duration-500 flex items-center justify-center relative shrink-0",
+                                    "w-11 h-11 rounded-full transition-all duration-500 flex items-center justify-center relative shrink-0",
                                     isListening
                                         ? "bg-primary text-white scale-110 shadow-[0_0_20px_rgba(59,130,246,0.6)]"
                                         : "bg-zinc-800 text-zinc-500 hover:text-zinc-300 transform-gpu safari-blur-fix"
@@ -361,7 +440,7 @@ export default function CaptureBox() {
                                 disabled={!input.trim() && !isListening}
                                 onClick={() => handleKeyDown({ key: 'Enter', preventDefault: () => { } })}
                                 className={cn(
-                                    "w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center shrink-0",
+                                    "w-11 h-11 rounded-full transition-all duration-300 flex items-center justify-center shrink-0",
                                     (input.trim() || isListening)
                                         ? "bg-primary text-white shadow-[0_0_15px_rgba(59,130,246,0.5)] scale-100"
                                         : "bg-zinc-800 text-zinc-600 scale-95"
@@ -383,7 +462,7 @@ export default function CaptureBox() {
                         exit={{ opacity: 0 }}
                         className="absolute -bottom-8 left-0 right-0 text-center text-xs text-primary font-medium tracking-wide"
                     >
-                        CAPTURED
+                        {typeof justSaved === "string" ? justSaved : "CAPTURED"}
                     </motion.div>
                 )}
             </AnimatePresence>

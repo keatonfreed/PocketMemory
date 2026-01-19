@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 
 export default function PWAInstallPrompt() {
     const [showPrompt, setShowPrompt] = useState(false);
-    const [shouldBounce, setShouldBounce] = useState(false);
 
     useEffect(() => {
         // Check if running in standalone mode (PWA)
@@ -19,9 +18,6 @@ export default function PWAInstallPrompt() {
         // ONLY show if iOS and NOT standalone
         if (ios) {
             setShowPrompt(true);
-            // Delay bounce by 10 seconds
-            const bounceTimer = setTimeout(() => setShouldBounce(true), 10000);
-            return () => clearTimeout(bounceTimer);
         }
     }, []);
 
@@ -39,16 +35,21 @@ export default function PWAInstallPrompt() {
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full pointer-events-none transform-gpu" />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[100px] rounded-full pointer-events-none transform-gpu" />
 
-                {/* Top Guide Indicator (Main for Chrome iOS / iPad / newer iOS) */}
-                <div className={cn(
-                    "absolute top-8 right-8 flex flex-col items-center opacity-90 z-[210] transition-transform duration-500",
-                    shouldBounce ? "animate-bounce" : "scale-90 opacity-40"
-                )}>
-                    <ArrowUp className="text-primary w-10 h-10 drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                {/* Top Guide Indicator */}
+                <div className="absolute top-8 right-8 flex flex-col items-center opacity-60 z-[210] scale-90">
+                    <Share className="text-primary w-10 h-10 drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
                     <span className="text-[10px] uppercase font-bold tracking-[0.2em] text-primary mt-2">Tap Share</span>
                 </div>
 
-                {/* Main Content - Moved up by 20px via mt-[-20px] or adjustment */}
+                {/* Bottom Guide Indicator */}
+                <div className="absolute right-8 flex flex-col items-center opacity-60 z-[210] scale-90"
+                    style={{ bottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}
+                >
+                    <span className="text-[10px] uppercase font-bold tracking-[0.2em] text-primary mb-2">Tap Share</span>
+                    <Share className="text-primary w-10 h-10 drop-shadow-[0_0_10px_rgba(59,130,246,0.5)] rotate-180" />
+                </div>
+
+                {/* Main Content */}
                 <div className="flex-1 flex flex-col items-center justify-center max-w-sm w-full space-y-12 -mt-10">
                     <div className="relative">
                         <div className="absolute inset-0 bg-primary/30 blur-2xl rounded-full transform-gpu scale-125" />
@@ -74,7 +75,7 @@ export default function PWAInstallPrompt() {
                             <div className="space-y-1">
                                 <div className="text-sm font-bold text-white uppercase tracking-wider">Step 1</div>
                                 <div className="text-sm text-white/70 leading-snug">
-                                    Tap the <span className="text-white font-medium">Share</span> button above
+                                    Tap the <span className="text-white font-medium">Share</span> button
                                 </div>
                             </div>
                         </div>
@@ -88,7 +89,7 @@ export default function PWAInstallPrompt() {
                             <div className="space-y-1">
                                 <div className="text-sm font-bold text-white uppercase tracking-wider">Step 2</div>
                                 <div className="text-sm text-white/70 leading-snug">
-                                    Scroll down and select <span className="text-white font-medium">Add to Home Screen</span>
+                                    Scroll down (or tap '...') and select <span className="text-white font-medium">Add to Home Screen</span>
                                 </div>
                             </div>
                         </div>

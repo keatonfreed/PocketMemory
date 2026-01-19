@@ -17,12 +17,16 @@ export default function StickyNav() {
                     {/* Left: Browse/Layers */}
                     <NavLink
                         to="/browse"
-                        className={({ isActive }) => cn(
-                            "p-3 rounded-full transition-all duration-300 hover:bg-secondary/50",
-                            isActive ? "text-white bg-secondary" : "text-muted-foreground"
-                        )}
+                        className="w-16 h-16 flex items-center justify-center transition-all duration-300 group"
                     >
-                        <Layers size={28} />
+                        {({ isActive }) => (
+                            <div className={cn(
+                                "p-3 rounded-full transition-all duration-300 group-hover:bg-secondary/50",
+                                isActive ? "text-white bg-secondary" : "text-muted-foreground"
+                            )}>
+                                <Layers size={28} />
+                            </div>
+                        )}
                     </NavLink>
 
                     {/* Center: Brain (Home) */}
@@ -30,7 +34,7 @@ export default function StickyNav() {
                         to="/"
                         className={({ isActive }) => cn(
                             "relative group flex items-center justify-center w-16 h-16 rounded-full transition-all duration-300",
-                            isActive ? "scale-110" : "scale-100"
+                            isActive ? "scale-115" : "scale-100"
                         )}
                     >
                         {({ isActive }) => (
@@ -55,12 +59,16 @@ export default function StickyNav() {
                     {/* Right: Ask/Search */}
                     <NavLink
                         to="/ask"
-                        className={({ isActive }) => cn(
-                            "p-3 rounded-full transition-all duration-300 hover:bg-secondary/50",
-                            isActive ? "text-white bg-secondary" : "text-muted-foreground"
-                        )}
+                        className="w-16 h-16 flex items-center justify-center transition-all duration-300 group"
                     >
-                        <Search size={28} />
+                        {({ isActive }) => (
+                            <div className={cn(
+                                "p-3 rounded-full transition-all duration-300 group-hover:bg-secondary/50",
+                                isActive ? "text-white bg-secondary" : "text-muted-foreground"
+                            )}>
+                                <Search size={28} />
+                            </div>
+                        )}
                     </NavLink>
                 </nav>
             </div>

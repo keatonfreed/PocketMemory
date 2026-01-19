@@ -1,30 +1,24 @@
 import React, { useState } from 'react'
-import MemoryFeed from '@/components/features/MemoryFeed'
-import StickyNav from '@/components/layout/StickyNav'
+import DocumentFeed from '@/components/features/DocumentFeed'
 import { Badge } from '@/components/ui/badge'
-import useMemoryStore from '@/hooks/useMemoryStore'
+import useDocuments from '@/hooks/useDocuments'
 
 export default function Browse() {
-    const filters = ["All", "Links", "Notes", "Tasks", "Ideas"]
+    const filterMap = { "All": "all", "Lists": "list", "Notes": "note" }
+    const filters = ["All", "Lists", "Notes"]
     const [activeFilter, setActiveFilter] = useState("All")
 
-    // We need to pass the filter to MemoryFeed or filter here. 
-    // Let's filter here for simplicity as MemoryFeed accepts a 'memories' prop override? 
-    // No, MemoryFeed pulls from store. Let's make MemoryFeed accept a `filter` function or prop.
-    // actually MemoryFeed pulls all.
-    // Let's query the specific items here.
-    const allMemories = useMemoryStore(state => state.memories)
+    const userDocuments = useDocuments()
 
-    const filteredMemories = activeFilter === "All"
-        ? allMemories
-        : allMemories.filter(m => m.type === activeFilter.slice(0, -1).toLowerCase()) // "Links" -> "link"
+    const filteredDocuments = activeFilter === "All"
+        ? userDocuments.getDocuments()
+        : userDocuments.getDocuments().filter(d => d.docType === filterMap[activeFilter])
 
     return (
-        <div className="min-h-screen flex flex-col pt-12 px-4 pb-32">
-            <h1 className="text-2xl font-bold mb-6 px-2 text-center glow-text">Timeline</h1>
+        <div className="min-h-dvh max-h-dvh flex flex-col pt-[max(48px,env(safe-area-inset-top))] px-4 pb-32">
+            <h1 className="text-2xl font-bold mb-6 px-2 text-center">Documents</h1>
 
-            {/* Filter Chips */}
-            <div className="flex gap-2 overflow-x-auto pb-4 px-2 no-scrollbar mb-4 justify-center">
+            <div className="flex gap-2 overflow-x-auto pb-4 px-2 no-scrollbar mb-4 justify-center min-h-max">
                 {filters.map(f => (
                     <Badge
                         key={f}
@@ -39,7 +33,7 @@ export default function Browse() {
             </div>
 
             <div className="flex-1">
-                <MemoryFeed memories={filteredMemories} />
+                <DocumentFeed documents={filteredDocuments} />
             </div>
         </div>
     )

@@ -1,6 +1,6 @@
 import React from 'react'
 import CaptureBox from '@/components/features/CaptureBox'
-import MemoryFeed from '@/components/features/MemoryFeed'
+import DocumentFeed from '@/components/features/DocumentFeed'
 import PushBanner from '@/components/features/PushBanner'
 import PWAInstallPrompt from '@/components/features/PWAInstallPrompt'
 
@@ -10,9 +10,9 @@ export default function Home() {
             <PWAInstallPrompt />
             <PushBanner />
 
-            <div className="flex-1 flex flex-col w-full justify-center min-h-[60vh] pt-12 px-6">
+            <div className="flex-1 flex flex-col w-full justify-center min-h-[60dvh] pt-12 px-6">
                 {/* Header - Subtle */}
-                <header className="flex justify-center mb-12 opacity-50">
+                <header className="flex justify-center mb-12 opacity-70">
                     <div className="uppercase tracking-[0.3em] text-[13px] text-muted-foreground">Pocket Memory</div>
                 </header>
 
@@ -22,10 +22,10 @@ export default function Home() {
 
             <div className="w-full px-6 pb-32">
                 <div className="mb-4 flex items-center justify-between border-b border-white/5 pb-2">
-                    <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pl-1">Recent Memories</h2>
+                    <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pl-1">Recent Documents</h2>
                 </div>
 
-                <MemoryFeed limit={10} />
+                <DocumentFeed limit={10} isSummary={true} />
             </div>
         </div>
     )

@@ -1,6 +1,6 @@
 {
     "name": "Pocket Memory",
-    "short_name": "Pocket",
+    "short_name": "Memory",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#09090b",

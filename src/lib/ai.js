@@ -1,25 +1,31 @@
 /**
  * Analyzes content using the server-side API.
  */
-export async function analyzeContent(text) {
+export async function queryMemory(text, context) {
     try {
-        const response = await fetch('/api/analyze', {
+        console.log("Querying memory for text:", text);
+        console.log("Context:", context);
+
+        const response = await fetch('/api/queryMemory', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({
+                text,
+                documents: context
+            }),
         });
 
         if (!response.ok) {
-            throw new Error('Analysis failed');
+            throw new Error('Query Memory failed: ' + response.statusText);
         }
 
         return await response.json();
 
     } catch (error) {
         console.error("AI Error:", error);
-        return fallbackAnalysis(text);
+        return fallbackQueryMemory(text);
     }
 }
 
@@ -27,14 +33,14 @@ export async function analyzeContent(text) {
  * Asks a question using RAG (Retrieval Augmented Generation) on local memories.
  * Returns an async generator that yields text chunks (Streaming).
  */
-export async function* askQuestionStream(messages, contextMemories) {
+export async function* askMemory(messages, documents) {
     try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/askMemory', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ messages, contextMemories }),
+            body: JSON.stringify({ messages, documents }),
         });
 
         if (!response.ok) throw new Error("Network response was not ok");
@@ -50,20 +56,18 @@ export async function* askQuestionStream(messages, contextMemories) {
         }
 
     } catch (error) {
-        console.error("AI Question Error:", error);
-        yield "Sorry, I couldn't reach my brain right now.";
+        console.error("AI Ask Memory Error:", error);
+        yield fallbackAskMemory();
     }
 }
 
-function fallbackAnalysis(text) {
-    // Basic fallback if API fails
-    const type = text.includes("http") ? "link" : "note";
+function fallbackQueryMemory(text) {
     return {
-        title: text.slice(0, 20) + "...",
-        summary: text.slice(0, 50),
-        tags: ["saved"],
-        type,
-        entities: [],
-        createdAt: new Date().toISOString()
+        actions: [],
     };
 }
+
+function fallbackAskMemory(text) {
+    return "Sorry, I couldn't reach my brain right now. Try again later.";
+}
+

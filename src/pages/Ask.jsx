@@ -3,8 +3,8 @@ import { motion } from 'framer-motion'
 import StickyNav from '@/components/layout/StickyNav'
 import { Send, Bot, User, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import useMemoryStore from '@/hooks/useMemoryStore'
-import { askQuestionStream } from '@/lib/ai'
+import useDocuments from '@/hooks/useDocuments'
+import { askMemory } from '@/lib/ai'
 
 const StreamingText = ({ content }) => {
     // Split content into words, preserving spaces
@@ -35,7 +35,7 @@ export default function Ask() {
     const [showTopFade, setShowTopFade] = useState(false)
     const [showBottomFade, setShowBottomFade] = useState(false)
 
-    const searchMemories = useMemoryStore(state => state.searchMemories)
+    const userDocuments = useDocuments()
     const scrollRef = useRef(null)
     const listRef = useRef(null)
 
@@ -83,7 +83,8 @@ export default function Ask() {
         setIsTyping(true)
 
         // Create context
-        const relevant = searchMemories(userMsg)
+        // const relevant = searchDocuments.searchDocuments(userMsg)
+        const relevant = userDocuments.getDocuments()
 
         // Prepare for AI response
         // Note: We don't add the message yet to avoid an empty box. 
@@ -93,7 +94,7 @@ export default function Ask() {
         const newHistory = [...messages, { role: 'user', content: userMsg }]
 
         try {
-            const stream = askQuestionStream(newHistory, relevant)
+            const stream = askMemory(newHistory, relevant)
 
             let fullContent = ""
             let isFirstChunk = true
@@ -125,7 +126,7 @@ export default function Ask() {
     }
 
     return (
-        <div className="min-h-screen max-h-full flex flex-col pt-6 px-4 pb-32 relative overflow-hidden">
+        <div className="min-h-dvh max-h-dvh flex flex-col pt-[max(48px,env(safe-area-inset-top))] px-4 pb-32 relative overflow-hidden">
             <header className="flex justify-center mb-6 border-b border-white/5 pb-4 shrink-0">
                 <div className="uppercase tracking-[0.2em] text-[10px] text-primary font-bold flex items-center gap-2">
                     <Sparkles size={12} /> Neural Interface

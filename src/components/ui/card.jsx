@@ -1,16 +1,17 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { Link } from "react-router-dom"
 
-const Card = React.forwardRef(({ className, ...props }, ref) => (
-    <div
-        ref={ref}
-        className={cn(
-            "rounded-2xl border border-secondary/40 bg-card/50 text-card-foreground shadow-sm backdrop-blur-sm",
+const Card = React.forwardRef(({ onClick, to, className, ...props }, ref) => {
+    const allProps = {
+        className: cn(
+            "rounded-2xl border border-secondary/40 bg-card/50 text-card-foreground shadow-sm backdrop-blur-sm text-left block",
             className
-        )}
-        {...props}
-    />
-))
+        ),
+        ...props
+    }
+    return to ? <Link ref={ref} to={to} onClick={onClick} {...allProps} /> : onClick ? <button ref={ref} onClick={onClick} {...allProps} /> : <div ref={ref} {...allProps} />
+})
 Card.displayName = "Card"
 
 const CardHeader = React.forwardRef(({ className, ...props }, ref) => (
