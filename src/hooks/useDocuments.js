@@ -9,8 +9,21 @@ const useDocuments = create(
 
             createDocument: (document) => set((state) => ({
                 documents: [{
-                    id: document.docId || crypto.randomUUID(),
-                    ...document
+                    docId: document.docId || crypto.randomUUID(),
+                    isPinned: false,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    docMetadata: document.docMetadata || (document.docType === 'list' ? { listType: 'normal' } : {}),
+                    ...document,
+                    // Ensure list content is an array of objects
+                    docContent: document.docType === 'list' && typeof document.docContent === 'string'
+                        ? document.docContent.split('\n').filter(Boolean).map(c => ({
+                            id: crypto.randomUUID(),
+                            content: c,
+                            completed: false,
+                            quantity: ''
+                        }))
+                        : document.docContent
                 }, ...state.documents]
             })),
 
@@ -20,11 +33,30 @@ const useDocuments = create(
 
             modifyDocument: (id, modifications) => set((state) => ({
                 documents: state.documents.map((d) =>
-                    d.docId === id ? { ...d, ...modifications } : d
+                    d.docId === id ? { ...d, ...modifications, updatedAt: new Date().toISOString() } : d
                 )
             })),
 
-            getDocuments: () => get().documents,
+            togglePin: (id) => set((state) => ({
+                documents: state.documents.map((d) =>
+                    d.docId === id ? { ...d, isPinned: !d.isPinned, updatedAt: new Date().toISOString() } : d
+                )
+            })),
+
+            renameDocument: (id, newTitle) => set((state) => ({
+                documents: state.documents.map((d) =>
+                    d.docId === id ? { ...d, docTitle: newTitle, updatedAt: new Date().toISOString() } : d
+                )
+            })),
+
+            getDocuments: () => {
+                const docs = get().documents;
+                return [...docs].sort((a, b) => {
+                    if (a.isPinned !== b.isPinned) return b.isPinned ? 1 : -1;
+                    return new Date(b.updatedAt) - new Date(a.updatedAt);
+                });
+            },
+
             getDocument: (id) => get().documents.find((d) => d.docId === id),
 
             searchDocuments: (query) => {
@@ -32,10 +64,10 @@ const useDocuments = create(
                 const { documents } = get();
                 if (!query) return documents;
                 return documents.filter(d =>
-                    d.title.toLowerCase().includes(lowerQuery) ||
-                    d.summary.toLowerCase().includes(lowerQuery) ||
-                    d.tags.some(t => t.toLowerCase().includes(lowerQuery)) ||
-                    d.content?.toLowerCase().includes(lowerQuery)
+                    (d.docTitle || "").toLowerCase().includes(lowerQuery) ||
+                    (d.docSummary || "").toLowerCase().includes(lowerQuery) ||
+                    (d.docTags || []).some(t => t.toLowerCase().includes(lowerQuery)) ||
+                    (d.docContent || "").toLowerCase().includes(lowerQuery)
                 );
             },
         }),

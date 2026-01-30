@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { queryMemory } from '@/lib/ai'
 import useDocuments from '@/hooks/useDocuments'
-import { Sparkles, ArrowUp, Mic } from 'lucide-react'
+import { Sparkles, ArrowUp, Mic, Search, Check, Trash, Trash2, Edit3, ExternalLink, RefreshCw, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { v4 as uuidv4 } from 'uuid' // using crypto in store, but good to have handy if needed. we'll use optimistic updates.
 
@@ -13,11 +13,12 @@ export default function CaptureBox() {
     const [input, setInput] = useState('')
     const [isProcessing, setIsProcessing] = useState(false)
     const [isFocused, setIsFocused] = useState(false)
-    const [justSaved, setJustSaved] = useState(false)
     const [animKey, setAnimKey] = useState(0)
     const [triggerAnim, setTriggerAnim] = useState(false)
     const [introSequence, setIntroSequence] = useState(true) // Track initial load state
     const [isListening, setIsListening] = useState(false)
+    const [notifications, setNotifications] = useState([]) // Array of { id, message, type, icon, docId? }
+
     const recognitionRef = React.useRef(null)
     const inputRef = React.useRef(input) // Keep track of latest input
     const isListeningRef = React.useRef(false)
@@ -175,6 +176,66 @@ export default function CaptureBox() {
         return () => clearTimeout(timer)
     }, [])
 
+    const addNotification = (message, type, { docId = null, requestId = null } = {}) => {
+        const id = uuidv4()
+        const icons = {
+            progress: <Search size={14} className="animate-pulse" />,
+            captured: <Sparkles size={14} />,
+            changed: <Edit3 size={14} />,
+            deleted: <Trash2 size={14} />,
+            opened: <ExternalLink size={14} />,
+            failed: <AlertCircle size={14} />
+        }
+
+        setNotifications(prev => {
+            const nextNotification = {
+                id,
+                message,
+                type,
+                icon: icons[type],
+                docId,
+                requestId,
+                onClick: docId ? () => navigate(`/document/${docId}`) : null
+            }
+
+            // Priority 1: If it's a progress/final update for the same REQUEST, replace it
+            if (requestId) {
+                const existingIndex = prev.findIndex(n => n.requestId === requestId)
+                if (existingIndex !== -1) {
+                    const next = [...prev]
+                    next[existingIndex] = nextNotification
+                    return next
+                }
+            }
+
+            // Priority 2: If it's a progress update for the same docId, replace it
+            if (docId && type === 'progress') {
+                const existingIndex = prev.findIndex(n => n.docId === docId && n.type === 'progress')
+                if (existingIndex !== -1) {
+                    const next = [...prev]
+                    next[existingIndex] = nextNotification
+                    return next
+                }
+            }
+
+            // Prepend new notifications (newest on top)
+            return [nextNotification, ...prev]
+        })
+
+        // Auto-remove final states after delay
+        if (type !== 'progress') {
+            setTimeout(() => {
+                setNotifications(prev => prev.filter(n => n.id !== id))
+            }, 3000)
+        }
+        return id
+    }
+
+
+    const removeNotificationByDocId = (docId, type) => {
+        setNotifications(prev => prev.filter(n => !(n.docId === docId && n.type === type)))
+    }
+
     const handleKeyDown = async (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
@@ -188,16 +249,15 @@ export default function CaptureBox() {
                 await new Promise(r => setTimeout(r, 600))
             }
 
-            // Get latest input after possible buffer delay
-            const content = inputRef.current
-            if (!content.trim()) {
+            // 1. Prepare Request
+            const requestId = uuidv4()
+            const inputContent = inputRef.current
+            if (!inputContent.trim()) {
                 setIsProcessing(false)
                 return
             }
 
             setInput('')
-
-            // setJustSaved(true)
             setIsFocused(false) // Unfocus to show feed
 
             // 2. Async AI Analysis
@@ -210,48 +270,72 @@ export default function CaptureBox() {
                     docTags: m.docTags,
                     docType: m.docType,
                 }))
-                const data = await queryMemory(content, context)
-                console.log("Query Memory Response:", data);
-                if (data?.actions) {
-                    data.actions.forEach(action => {
-                        switch (action.actionType) {
-                            case "createDocument":
-                                userDocuments.createDocument({
-                                    docId: crypto.randomUUID(),
-                                    docTitle: action.actionPayload.docTitle,
-                                    docContent: action.actionPayload.docContent,
-                                    docSummary: action.actionPayload.docSummary,
-                                    docTags: action.actionPayload.docTags,
-                                    docType: action.actionPayload.docType,
-                                    createdAt: new Date().toISOString(),
-                                    updatedAt: new Date().toISOString(),
-                                })
-                                setJustSaved("CAPTURED")
-                                break;
-                            case "modifyDocument":
-                                userDocuments.modifyDocument(action.actionPayload.docId, action.actionPayload)
-                                setJustSaved("CHANGED")
-                                break;
-                            case "deleteDocument":
-                                userDocuments.deleteDocument(action.actionPayload.docId)
-                                setJustSaved("DELETED")
-                                break;
-                            case "openDocument":
-                                navigate(`/document/${action.actionPayload.docId}`)
-                                setJustSaved("OPENED")
-                                break;
-                            default:
-                                console.warn("Unknown action type:", action.actionType);
-                                setJustSaved("FAILED")
+
+                const stream = queryMemory(inputContent, context)
+
+                for await (const event of stream) {
+                    if (event.type === 'progress') {
+                        addNotification(event.message, 'progress', { docId: event.docId, requestId })
+                    } else if (event.type === 'final') {
+
+                        const data = event.data
+                        console.log("Query Memory Final Response:", data);
+
+                        if (data?.actions) {
+                            data.actions.forEach(action => {
+                                // Clear progress for this document if it exists
+                                if (action.actionPayload?.docId) {
+                                    removeNotificationByDocId(action.actionPayload.docId, 'progress')
+                                }
+
+                                switch (action.actionType) {
+                                    case "createDocument":
+                                        const newDocId = crypto.randomUUID()
+                                        userDocuments.createDocument({
+                                            docId: newDocId,
+                                            docTitle: action.actionPayload.docTitle,
+                                            docContent: action.actionPayload.docContent,
+                                            docSummary: action.actionPayload.docSummary,
+                                            docTags: action.actionPayload.docTags,
+                                            docType: action.actionPayload.docType,
+                                            createdAt: new Date().toISOString(),
+                                            updatedAt: new Date().toISOString(),
+                                        })
+                                        addNotification("CAPTURED", 'captured', { docId: newDocId, requestId })
+                                        break;
+                                    case "modifyDocument":
+                                        userDocuments.modifyDocument(action.actionPayload.docId, action.actionPayload)
+                                        addNotification("CHANGED", 'changed', { docId: action.actionPayload.docId, requestId })
+                                        break;
+                                    case "deleteDocument":
+                                        userDocuments.deleteDocument(action.actionPayload.docId)
+                                        addNotification("DELETED", 'deleted', { docId: action.actionPayload.docId, requestId })
+                                        break;
+                                    case "openDocument":
+                                        navigate(`/document/${action.actionPayload.docId}`)
+                                        addNotification("OPENED", 'opened', { docId: action.actionPayload.docId, requestId })
+                                        break;
+                                    default:
+                                        console.warn("Unknown action type:", action.actionType);
+                                        addNotification("FAILED", 'failed', { requestId })
+                                }
+                            })
+                        } else {
+                            // If no actions, and we finished progress, clear this requestId
+                            setNotifications(prev => prev.filter(n => n.requestId !== requestId))
                         }
-                    })
+                    }
                 }
             } catch (err) {
                 console.error("AI Failed", err)
+                setNotifications(prev => prev.filter(n => n.requestId !== requestId))
+                addNotification("AI FAILED", 'failed', { requestId })
             } finally {
                 setIsProcessing(false)
-                setTimeout(() => setJustSaved(false), 2000)
             }
+
+
+
         }
     }
 
@@ -448,26 +532,43 @@ export default function CaptureBox() {
                                         : "bg-zinc-800 text-zinc-600 scale-95"
                                 )}
                             >
-                                {isProcessing ? <Sparkles size={20} className="animate-spin text-white" /> : <ArrowUp size={20} />}
+                                {isProcessing ? (
+                                    <Sparkles size={20} className="animate-spin text-white" />
+                                ) : <ArrowUp size={20} />}
                             </button>
                         </div>
                     </div>
                 </div>
             </motion.div>
 
-            {/* Success Feedback */}
-            <AnimatePresence>
-                {justSaved && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10, filter: "blur(5px)" }}
-                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                        exit={{ opacity: 0 }}
-                        className="absolute -bottom-8 left-0 right-0 text-center text-xs text-primary font-medium tracking-wide"
-                    >
-                        {typeof justSaved === "string" ? justSaved : "CAPTURED"}
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* Stacked Notifications Feed */}
+            <div className="absolute top-full mt-4 left-0 right-0 flex flex-col items-center gap-1.5 pointer-events-none z-50">
+                <AnimatePresence mode="popLayout" initial={false}>
+                    {notifications.map((n) => (
+                        <motion.div
+                            key={n.id}
+                            layout
+                            onClick={n.onClick}
+                            initial={{ opacity: 0, y: -5, scale: 0.95, filter: "blur(4px)" }}
+                            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                            exit={{ opacity: 0, scale: 0.95, y: -5, filter: "blur(4px)", transition: { duration: 0.2 } }}
+                            className={cn(
+                                "flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest backdrop-blur-md border shadow-lg transition-all",
+                                n.onClick && "cursor-pointer pointer-events-auto active:scale-95 hover:bg-white/5",
+                                n.type === 'progress'
+                                    ? "bg-primary/10 border-primary/20 text-primary/80"
+                                    : "bg-zinc-900/80 border-white/5 text-primary"
+                            )}
+                        >
+                            <span className="shrink-0 opacity-80">{n.icon}</span>
+                            <span>{n.message}</span>
+                        </motion.div>
+                    ))}
+                </AnimatePresence>
+            </div>
+
+
         </div>
     )
 }
+

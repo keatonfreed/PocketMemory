@@ -2,15 +2,20 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Link } from "react-router-dom"
 
-const Card = React.forwardRef(({ onClick, to, className, ...props }, ref) => {
+const Card = React.forwardRef(({ onClick, to, as, className, ...props }, ref) => {
     const allProps = {
         className: cn(
             "rounded-2xl border border-secondary/40 bg-card/50 text-card-foreground shadow-sm backdrop-blur-sm text-left block",
             className
         ),
+        onClick,
         ...props
     }
-    return to ? <Link ref={ref} to={to} onClick={onClick} {...allProps} /> : onClick ? <button ref={ref} onClick={onClick} {...allProps} /> : <div ref={ref} {...allProps} />
+
+    if (to) return <Link ref={ref} to={to} {...allProps} />
+    if (as === "div") return <div ref={ref} {...allProps} />
+    if (as === "button" || (!as && onClick)) return <button ref={ref} {...allProps} />
+    return <div ref={ref} {...allProps} />
 })
 Card.displayName = "Card"
 

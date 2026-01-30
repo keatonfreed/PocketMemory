@@ -13,14 +13,24 @@ export async function POST(req) {
             });
         }
 
-        const result = await openaiApi(text, documents || []);
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            async start(controller) {
+                try {
+                    const generator = openaiApi(text, documents || []);
+                    for await (const event of generator) {
+                        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+                    }
+                    controller.close();
+                } catch (error) {
+                    console.error("Streaming Error:", error);
+                    controller.error(error);
+                }
+            }
+        });
 
-        if (!result) throw new Error("No AI response returned.");
-
-        return new Response(JSON.stringify({
-            ...result,
-        }), {
-            headers: { "Content-Type": "application/json" }
+        return new Response(stream, {
+            headers: { "Content-Type": "application/x-ndjson" }
         });
 
     } catch (error) {
@@ -31,3 +41,4 @@ export async function POST(req) {
         });
     }
 }
+

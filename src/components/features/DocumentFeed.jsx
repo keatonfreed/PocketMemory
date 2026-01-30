@@ -23,8 +23,13 @@ export default function DocumentFeed({ limit, documents: propDocuments, isSummar
         )
     }
 
+
+
+
     return (
-        <div className={cn("gap-2 pb-8", isSummary ? "grid grid-cols-2" : "flex flex-col")}>
+
+
+        <div className={cn("gap-2 pb-8 px-4", isSummary ? "grid grid-cols-2" : "flex flex-col")}>
             <AnimatePresence mode="popLayout">
                 {displayDocuments.map(document => (
                     <DocumentCard key={document.docId} document={document} isSummary={isSummary} className="h-full" />
@@ -39,5 +44,6 @@ export default function DocumentFeed({ limit, documents: propDocuments, isSummar
                 </div>
             )}
         </div>
+
     )
 }
