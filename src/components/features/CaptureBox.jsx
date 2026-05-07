@@ -1,28 +1,38 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { queryMemory } from '@/lib/ai'
-import useDocuments from '@/hooks/useDocuments'
-import { Sparkles, ArrowUp, Mic, Search, Check, Trash, Trash2, Edit3, ExternalLink, RefreshCw, AlertCircle } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { ArrowUp, Mic, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { v4 as uuidv4 } from 'uuid' // using crypto in store, but good to have handy if needed. we'll use optimistic updates.
+import useCaptureRequests from '@/hooks/useCaptureRequests'
+import CaptureStatusPills from '@/components/features/CaptureStatusPills'
 
-export default function CaptureBox() {
+export default function CaptureBox({ preview = false, previewText = '' }) {
     const navigate = useNavigate()
 
-    const [input, setInput] = useState('')
-    const [isProcessing, setIsProcessing] = useState(false)
-    const [isFocused, setIsFocused] = useState(false)
+    const [input, setInput] = useState(previewText)
+    const [isFocused, setIsFocused] = useState(preview)
     const [animKey, setAnimKey] = useState(0)
-    const [triggerAnim, setTriggerAnim] = useState(false)
-    const [introSequence, setIntroSequence] = useState(true) // Track initial load state
+    const [triggerAnim, setTriggerAnim] = useState(preview)
+    const [introSequence, setIntroSequence] = useState(!preview) // Track initial load state
     const [isListening, setIsListening] = useState(false)
-    const [notifications, setNotifications] = useState([]) // Array of { id, message, type, icon, docId? }
+    const activeRequestCount = useCaptureRequests(state => state.activeRequestCount)
+    const startRequest = useCaptureRequests(state => state.startRequest)
 
     const recognitionRef = React.useRef(null)
     const inputRef = React.useRef(input) // Keep track of latest input
     const isListeningRef = React.useRef(false)
+    const isComposingRef = React.useRef(false)
+    const suppressMobileInputUntilRef = React.useRef(0)
     const triggerDuration = React.useRef(2000)
+    const textAreaRef = React.useRef(null)
+    const isProcessing = activeRequestCount > 0
+    const showSendLoader = isProcessing && !input.trim() && !isListening
+
+    useEffect(() => {
+        if (preview) {
+            setInput(previewText)
+        }
+    }, [preview, previewText])
 
     useEffect(() => {
         inputRef.current = input
@@ -30,6 +40,8 @@ export default function CaptureBox() {
 
     // STT Initialization
     useEffect(() => {
+        if (preview) return;
+
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
 
@@ -95,7 +107,7 @@ export default function CaptureBox() {
             recognition.stop();
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, []);
+    }, [preview]);
 
     const stopListening = () => {
         if (recognitionRef.current && isListeningRef.current) {
@@ -106,6 +118,8 @@ export default function CaptureBox() {
     };
 
     const toggleListening = () => {
+        if (preview) return;
+
         if (!recognitionRef.current) {
             alert("Speech recognition is not supported in this browser.");
             return;
@@ -129,10 +143,10 @@ export default function CaptureBox() {
     const isVisibleRef = React.useRef(false)
     const visibilityTimer = React.useRef(null)
 
-    const userDocuments = useDocuments()
-
     // Visibility Tracking Effect
     useEffect(() => {
+        if (preview) return;
+
         // If we represent "Visual Presence" (Focused or Pulsing)
         if (isFocused || triggerAnim) {
             isVisibleRef.current = true
@@ -151,18 +165,29 @@ export default function CaptureBox() {
         return () => {
             if (visibilityTimer.current) clearTimeout(visibilityTimer.current)
         }
-    }, [isFocused, triggerAnim, introSequence])
+    }, [isFocused, triggerAnim, introSequence, preview])
 
     // Auto-fade logic: Trigger set to true on focus, then immediately false to start decay
     useEffect(() => {
+        if (preview) return;
+
         if (triggerAnim) {
             const timer = setTimeout(() => setTriggerAnim(false), triggerDuration.current);
             return () => clearTimeout(timer);
         }
-    }, [triggerAnim]);
+    }, [triggerAnim, preview]);
+
+    // Auto-scroll during transcription
+    useEffect(() => {
+        if (isListening && textAreaRef.current) {
+            textAreaRef.current.scrollTop = textAreaRef.current.scrollHeight
+        }
+    }, [input, isListening])
 
     // Initial Load Animation
     useEffect(() => {
+        if (preview) return;
+
         // slight delay to ensure render is ready
         const timer = setTimeout(() => {
             triggerDuration.current = 800 // Shorter pulsing hold for initial load
@@ -174,173 +199,60 @@ export default function CaptureBox() {
             setTimeout(() => setIntroSequence(false), 2800)
         }, 100)
         return () => clearTimeout(timer)
-    }, [])
+    }, [preview])
 
-    const addNotification = (message, type, { docId = null, requestId = null } = {}) => {
-        const id = uuidv4()
-        const icons = {
-            progress: <Search size={14} className="animate-pulse" />,
-            captured: <Sparkles size={14} />,
-            changed: <Edit3 size={14} />,
-            deleted: <Trash2 size={14} />,
-            opened: <ExternalLink size={14} />,
-            failed: <AlertCircle size={14} />
+    const submitCapture = async () => {
+        if (preview) return;
+        const currentText = textAreaRef.current?.value || inputRef.current
+        if (!currentText.trim() && !isListening) return
+
+        // If we are listening, wait a tiny bit to catch any final results before grabbing state
+        if (isListening) {
+            stopListening()
+            await new Promise(r => setTimeout(r, 600))
         }
 
-        setNotifications(prev => {
-            const nextNotification = {
-                id,
-                message,
-                type,
-                icon: icons[type],
-                docId,
-                requestId,
-                onClick: docId ? () => navigate(`/document/${docId}`) : null
+        const inputContent = textAreaRef.current?.value || inputRef.current
+        if (!inputContent.trim()) return
+
+        suppressMobileInputUntilRef.current = Date.now() + 350
+        inputRef.current = ''
+        setInput('')
+        textAreaRef.current?.blur()
+        setIsFocused(false) // Unfocus to show feed
+
+        setTimeout(() => {
+            if (Date.now() < suppressMobileInputUntilRef.current && textAreaRef.current) {
+                textAreaRef.current.value = ''
+                setInput('')
             }
+        }, 60)
 
-            // Priority 1: If it's a progress/final update for the same REQUEST, replace it
-            if (requestId) {
-                const existingIndex = prev.findIndex(n => n.requestId === requestId)
-                if (existingIndex !== -1) {
-                    const next = [...prev]
-                    next[existingIndex] = nextNotification
-                    return next
-                }
-            }
-
-            // Priority 2: If it's a progress update for the same docId, replace it
-            if (docId && type === 'progress') {
-                const existingIndex = prev.findIndex(n => n.docId === docId && n.type === 'progress')
-                if (existingIndex !== -1) {
-                    const next = [...prev]
-                    next[existingIndex] = nextNotification
-                    return next
-                }
-            }
-
-            // Prepend new notifications (newest on top)
-            return [nextNotification, ...prev]
-        })
-
-        // Auto-remove final states after delay
-        if (type !== 'progress') {
-            setTimeout(() => {
-                setNotifications(prev => prev.filter(n => n.id !== id))
-            }, 3000)
-        }
-        return id
+        startRequest(inputContent, { navigate })
     }
 
+    const handleInputChange = (e) => {
+        if (Date.now() < suppressMobileInputUntilRef.current && !inputRef.current) {
+            e.target.value = ''
+            setInput('')
+            return
+        }
 
-    const removeNotificationByDocId = (docId, type) => {
-        setNotifications(prev => prev.filter(n => !(n.docId === docId && n.type === type)))
+        setInput(e.target.value)
     }
 
     const handleKeyDown = async (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (preview) return;
+
+        if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
             e.preventDefault()
-            if (!input.trim() && !isListening) return
-
-            setIsProcessing(true)
-
-            // If we are listening, wait a tiny bit to catch any final results before grabbing state
-            if (isListening) {
-                stopListening()
-                await new Promise(r => setTimeout(r, 600))
-            }
-
-            // 1. Prepare Request
-            const requestId = uuidv4()
-            const inputContent = inputRef.current
-            if (!inputContent.trim()) {
-                setIsProcessing(false)
-                return
-            }
-
-            setInput('')
-            setIsFocused(false) // Unfocus to show feed
-
-            // 2. Async AI Analysis
-            try {
-                let context = userDocuments.getDocuments()
-                context = context.map(m => ({
-                    docId: m.docId,
-                    docTitle: m.docTitle,
-                    docSummary: m.docSummary,
-                    docTags: m.docTags,
-                    docType: m.docType,
-                }))
-
-                const stream = queryMemory(inputContent, context)
-
-                for await (const event of stream) {
-                    if (event.type === 'progress') {
-                        addNotification(event.message, 'progress', { docId: event.docId, requestId })
-                    } else if (event.type === 'final') {
-
-                        const data = event.data
-                        console.log("Query Memory Final Response:", data);
-
-                        if (data?.actions) {
-                            data.actions.forEach(action => {
-                                // Clear progress for this document if it exists
-                                if (action.actionPayload?.docId) {
-                                    removeNotificationByDocId(action.actionPayload.docId, 'progress')
-                                }
-
-                                switch (action.actionType) {
-                                    case "createDocument":
-                                        const newDocId = crypto.randomUUID()
-                                        userDocuments.createDocument({
-                                            docId: newDocId,
-                                            docTitle: action.actionPayload.docTitle,
-                                            docContent: action.actionPayload.docContent,
-                                            docSummary: action.actionPayload.docSummary,
-                                            docTags: action.actionPayload.docTags,
-                                            docType: action.actionPayload.docType,
-                                            createdAt: new Date().toISOString(),
-                                            updatedAt: new Date().toISOString(),
-                                        })
-                                        addNotification("CAPTURED", 'captured', { docId: newDocId, requestId })
-                                        break;
-                                    case "modifyDocument":
-                                        userDocuments.modifyDocument(action.actionPayload.docId, action.actionPayload)
-                                        addNotification("CHANGED", 'changed', { docId: action.actionPayload.docId, requestId })
-                                        break;
-                                    case "deleteDocument":
-                                        userDocuments.deleteDocument(action.actionPayload.docId)
-                                        addNotification("DELETED", 'deleted', { docId: action.actionPayload.docId, requestId })
-                                        break;
-                                    case "openDocument":
-                                        navigate(`/document/${action.actionPayload.docId}`)
-                                        addNotification("OPENED", 'opened', { docId: action.actionPayload.docId, requestId })
-                                        break;
-                                    default:
-                                        console.warn("Unknown action type:", action.actionType);
-                                        addNotification("FAILED", 'failed', { requestId })
-                                }
-                            })
-                        } else {
-                            // If no actions, and we finished progress, clear this requestId
-                            setNotifications(prev => prev.filter(n => n.requestId !== requestId))
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error("AI Failed", err)
-                setNotifications(prev => prev.filter(n => n.requestId !== requestId))
-                addNotification("AI FAILED", 'failed', { requestId })
-            } finally {
-                setIsProcessing(false)
-            }
-
-
-
+            submitCapture()
         }
     }
 
     return (
-        <div className="relative w-full mb-10 z-20 group">
+        <div className={cn("relative w-full mb-10 z-20 group", preview && "pointer-events-none")}>
+            <div className="relative">
             {/* 
                 Glow Background 
                 - Active (Focus/Pulse): Fast transition (500ms) for responsiveness
@@ -466,8 +378,17 @@ export default function CaptureBox() {
                 {/* Inner Content Surface - Increased margin for thicker border */}
                 <div className="relative z-10 m-[2px] bg-card rounded-[15px] p-1 h-full min-h-[120px] flex flex-col ">
                     <textarea
+                        ref={textAreaRef}
                         value={input}
-                        onChange={e => setInput(e.target.value)}
+                        readOnly={preview}
+                        tabIndex={preview ? -1 : undefined}
+                        onChange={handleInputChange}
+                        onCompositionStart={() => {
+                            isComposingRef.current = true
+                        }}
+                        onCompositionEnd={() => {
+                            isComposingRef.current = false
+                        }}
                         onFocus={() => {
                             // User Interaction override:
                             // Cancel any running intro logic immediately to ensure responsiveness
@@ -499,6 +420,7 @@ export default function CaptureBox() {
                         <div className="flex items-center gap-2.5">
                             <button
                                 onClick={toggleListening}
+                                disabled={preview}
                                 className={cn(
                                     "w-11 h-11 rounded-full transition-all duration-500 flex items-center justify-center relative shrink-0",
                                     isListening
@@ -523,52 +445,29 @@ export default function CaptureBox() {
                             </button>
 
                             <button
-                                disabled={!input.trim() && !isListening}
-                                onClick={() => handleKeyDown({ key: 'Enter', preventDefault: () => { } })}
+                                disabled={preview || (!input.trim() && !isListening)}
+                                onClick={submitCapture}
                                 className={cn(
                                     "w-11 h-11 rounded-full transition-all duration-300 flex items-center justify-center shrink-0",
-                                    (input.trim() || isListening)
+                                    (input.trim() || isListening || showSendLoader)
                                         ? "bg-primary text-white shadow-[0_0_15px_rgba(59,130,246,0.5)] scale-100"
                                         : "bg-zinc-800 text-zinc-600 scale-95"
                                 )}
                             >
-                                {isProcessing ? (
-                                    <Sparkles size={20} className="animate-spin text-white" />
+                                {showSendLoader ? (
+                                    <Loader2 size={20} className="animate-spin text-white" />
                                 ) : <ArrowUp size={20} />}
                             </button>
                         </div>
                     </div>
                 </div>
             </motion.div>
+            </div>
 
             {/* Stacked Notifications Feed */}
-            <div className="absolute top-full mt-4 left-0 right-0 flex flex-col items-center gap-1.5 pointer-events-none z-50">
-                <AnimatePresence mode="popLayout" initial={false}>
-                    {notifications.map((n) => (
-                        <motion.div
-                            key={n.id}
-                            layout
-                            onClick={n.onClick}
-                            initial={{ opacity: 0, y: -5, scale: 0.95, filter: "blur(4px)" }}
-                            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                            exit={{ opacity: 0, scale: 0.95, y: -5, filter: "blur(4px)", transition: { duration: 0.2 } }}
-                            className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest backdrop-blur-md border shadow-lg transition-all",
-                                n.onClick && "cursor-pointer pointer-events-auto active:scale-95 hover:bg-white/5",
-                                n.type === 'progress'
-                                    ? "bg-primary/10 border-primary/20 text-primary/80"
-                                    : "bg-zinc-900/80 border-white/5 text-primary"
-                            )}
-                        >
-                            <span className="shrink-0 opacity-80">{n.icon}</span>
-                            <span>{n.message}</span>
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
-            </div>
+            <CaptureStatusPills />
 
 
         </div>
     )
 }
-

@@ -6,7 +6,7 @@ self.addEventListener("push", (event) => {
 
     const title = data.title || "Pocket Memory";
     const body = data.body || "";
-    const url = data.url || "/";
+    const url = data.url || "/app";
     const icon = data.icon || "/icon-192.png";
 
     const options = {
@@ -23,7 +23,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
     event.notification.close();
-    const url = event.notification?.data?.url || "/";
+    const url = event.notification?.data?.url || "/app";
 
     event.waitUntil((async () => {
         const allClients = await clients.matchAll({ type: "window", includeUncontrolled: true });

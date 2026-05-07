@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "ai:editor": "node ai/server.mjs",
+    "ai:editor:watch": "npx nodemon --watch ai --ext mjs,js,html,css,json --ignore ai/exports --ignore ai/data/examples.json ai/server.mjs",
+    "ai:export": "node ai/export-jsonl.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PocketMemory AI Dataset</title>
+    <link rel="icon" href="/public/icon-192.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>PocketMemory AI Dataset</h1>
+          <p id="status">Loading examples...</p>
+        </div>
+        <div class="actions">
+          <button id="validateBtn">Validate</button>
+          <button id="saveBtn" class="primary">Save</button>
+          <button id="nextDraftBtn">Next Draft</button>
+          <button id="exportBtn">Export JSONL</button>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="filters">
+            <input id="search" placeholder="Search examples" />
+            <select id="statusFilter">
+              <option value="all">All statuses</option>
+              <option value="approved">Approved</option>
+              <option value="draft">Draft</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div id="exampleList" class="example-list"></div>
+        </aside>
+
+        <section class="editor">
+          <div class="tabs">
+            <button class="tab active" data-tab="example">Example</button>
+            <button class="tab" data-tab="prompt">Prompt</button>
+            <button class="tab" data-tab="preview">JSONL Preview</button>
+          </div>
+
+          <div id="examplePanel" class="panel active">
+            <div class="grid two">
+              <label>
+                Title
+                <input id="titleInput" />
+              </label>
+              <label>
+                Category
+                <input id="categoryInput" />
+              </label>
+            </div>
+            <div class="grid status-tool">
+              <label>
+                Status
+                <button id="statusToggleBtn" class="status-toggle" type="button">Draft</button>
+                <button id="rejectSelectedBtn" class="reject-main" type="button">Reject</button>
+                <select id="exampleStatus" class="hidden-select" aria-label="Example status">
+                  <option value="draft">draft</option>
+                  <option value="approved">approved</option>
+                  <option value="rejected">rejected</option>
+                </select>
+              </label>
+              <label>
+                Tool call(s) JSON
+                <textarea id="toolCallInput" class="short" spellcheck="false" placeholder="null, one object, or an array of tool calls"></textarea>
+              </label>
+            </div>
+            <label>
+              User input
+              <textarea id="userInput" class="short"></textarea>
+            </label>
+            <label>
+              Documents JSON
+              <textarea id="documentsInput" spellcheck="false"></textarea>
+            </label>
+            <label>
+              Final output JSON
+              <textarea id="finalInput" spellcheck="false"></textarea>
+            </label>
+          </div>
+
+          <div id="promptPanel" class="panel">
+            <label>
+              Developer prompt template
+              <textarea id="promptInput" spellcheck="false"></textarea>
+            </label>
+          </div>
+
+          <div id="previewPanel" class="panel">
+            <pre id="previewOutput"></pre>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

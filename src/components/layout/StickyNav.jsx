@@ -1,13 +1,39 @@
 import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Brain, Layers, MessageSquare, Search } from 'lucide-react'
+import { Brain, Layers, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export default function StickyNav() {
+export default function StickyNav({ preview = false }) {
     const location = useLocation();
 
-    const isLinkActive = (path) => {
-        return location.pathname === path;
+    if (preview) {
+        return (
+            <div className="absolute bottom-0 left-0 w-full z-50 pb-8 pt-12 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-none">
+                <div className="px-6">
+                    <nav className="flex justify-center items-center gap-12" aria-hidden="true">
+                        <div className="w-16 h-16 flex items-center justify-center">
+                            <div className="p-3 rounded-full text-muted-foreground">
+                                <Layers size={28} />
+                            </div>
+                        </div>
+
+                        <div className="relative flex items-center justify-center w-16 h-16 rounded-full scale-115">
+                            <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl" />
+                            <div className="absolute inset-0 rounded-full border border-primary shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+                            <div className="relative z-10 bg-background rounded-full p-3.5 border border-white/10">
+                                <Brain size={32} className="text-primary" />
+                            </div>
+                        </div>
+
+                        <div className="w-16 h-16 flex items-center justify-center">
+                            <div className="p-3 rounded-full text-muted-foreground">
+                                <Search size={28} />
+                            </div>
+                        </div>
+                    </nav>
+                </div>
+            </div>
+        )
     }
 
     return (
@@ -16,7 +42,7 @@ export default function StickyNav() {
                 <nav className="flex justify-center items-center gap-12">
                     {/* Left: Browse/Layers */}
                     <NavLink
-                        to="/browse"
+                        to="/app/browse"
                         className="w-16 h-16 flex items-center justify-center transition-all duration-300 group"
                     >
                         {({ isActive }) => (
@@ -31,7 +57,8 @@ export default function StickyNav() {
 
                     {/* Center: Brain (Home) */}
                     <NavLink
-                        to="/"
+                        to="/app"
+                        end
                         className={({ isActive }) => cn(
                             "relative group flex items-center justify-center w-16 h-16 rounded-full transition-all duration-300",
                             isActive ? "scale-115" : "scale-100"
@@ -58,7 +85,7 @@ export default function StickyNav() {
 
                     {/* Right: Ask/Search */}
                     <NavLink
-                        to="/ask"
+                        to="/app/ask"
                         className="w-16 h-16 flex items-center justify-center transition-all duration-300 group"
                     >
                         {({ isActive }) => (

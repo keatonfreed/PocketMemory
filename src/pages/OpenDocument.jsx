@@ -1,21 +1,25 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
-import useDocuments from '@/hooks/useDocuments'
+import useDocuments, { normalizeListContent } from '@/hooks/useDocuments'
 import { Textarea } from '@/components/ui/textarea'
 import { Plus, Trash2, ChevronLeft, Check, RotateCcw, Settings, Apple, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion'
+import { newItemId } from '@/lib/ids'
 
 const ListItem = ({ item, index, onUpdate, onRemove, onToggleComplete, isNew }) => {
     const x = useMotionValue(0)
     const inputRef = useRef(null)
     const containerRef = useRef(null)
+    const dismissTimerRef = useRef(null)
+    const dismissAnimationRef = useRef(null)
     const [isOpen, setIsOpen] = useState(false)
 
     // Swipe Constants
     const ACTION_WIDTH = 80
     const FULL_SWIPE_THRESHOLD = 150
+    const DISMISS_ACTION_DELAY = 110
 
     useEffect(() => {
         if (isNew && inputRef.current) {
@@ -23,30 +27,57 @@ const ListItem = ({ item, index, onUpdate, onRemove, onToggleComplete, isNew }) 
         }
     }, [isNew])
 
+    useEffect(() => {
+        return () => {
+            if (dismissTimerRef.current) {
+                window.clearTimeout(dismissTimerRef.current)
+            }
+            dismissAnimationRef.current?.stop()
+        }
+    }, [])
+
     // Reset position if item changes (e.g. restoration)
     useEffect(() => {
-        animate(x, 0)
+        dismissAnimationRef.current?.stop()
+        x.set(0)
         setIsOpen(false)
-    }, [item.completed])
+    }, [item.id, item.completed, x])
 
-    const handleDragEnd = async (e, { offset, velocity }) => {
+    const commitDismiss = (direction) => {
+        const containerWidth = containerRef.current?.offsetWidth || window.innerWidth || 400
+        const targetX = direction * (containerWidth + 160)
+
+        setIsOpen(false)
+        dismissAnimationRef.current = animate(x, targetX, { type: "tween", duration: 0.16, ease: "easeOut" })
+
+        if (dismissTimerRef.current) {
+            window.clearTimeout(dismissTimerRef.current)
+        }
+
+        dismissTimerRef.current = window.setTimeout(() => {
+            dismissTimerRef.current = null
+            if (direction > 0) {
+                onToggleComplete(index)
+            } else if (item.completed) {
+                onRemove(index)
+            } else {
+                onToggleComplete(index)
+            }
+        }, DISMISS_ACTION_DELAY)
+    }
+
+    const handleDragEnd = (e, { offset, velocity }) => {
         const currentX = x.get()
         let targetX = 0
 
         // Determine target based on drag distance and velocity
         if (currentX > FULL_SWIPE_THRESHOLD) {
             // Full Right Swipe -> Restore/Complete
-            targetX = 1000 // Swipe fully off screen
-            await animate(x, targetX, { type: "spring", stiffness: 300, damping: 30 }).finished
-            if (item.completed) onToggleComplete(index)
-            else onToggleComplete(index)
+            commitDismiss(1)
             return
         } else if (currentX < -FULL_SWIPE_THRESHOLD) {
             // Full Left Swipe -> Delete/Complete
-            targetX = -1000 // Swipe fully off screen
-            await animate(x, targetX, { type: "spring", stiffness: 300, damping: 30 }).finished
-            if (item.completed) onRemove(index)
-            else onToggleComplete(index)
+            commitDismiss(-1)
             return
         } else if (currentX > ACTION_WIDTH / 2) {
             // Open Right (Restore)
@@ -188,23 +219,14 @@ export default function OpenDocument() {
 
     useEffect(() => {
         if (!doc && docId) {
-            navigate('/browse')
+            navigate('/app/browse')
         } else if (doc) {
             setTitle(doc.docTitle || '')
             setDocMetadata(doc.docMetadata || {})
 
             // Normalize content
             if (doc.docType === 'list') {
-                if (typeof doc.docContent === 'string') {
-                    setContent(doc.docContent.split('\n').filter(Boolean).map(c => ({
-                        id: crypto.randomUUID(),
-                        content: c,
-                        completed: false,
-                        quantity: ''
-                    })))
-                } else {
-                    setContent(doc.docContent || [])
-                }
+                setContent(normalizeListContent(doc.docContent))
             } else {
                 setContent(doc.docContent || '')
             }
@@ -225,8 +247,8 @@ export default function OpenDocument() {
         return () => window.removeEventListener('resize', handleScroll)
     }, [title])
 
-    const syncChanges = (modifications) => {
-        userDocuments.modifyDocument(docId, modifications)
+    const syncChanges = (changes) => {
+        userDocuments.modifyDoc(docId, changes)
     }
 
     const handleTitleChange = (e) => {
@@ -243,7 +265,7 @@ export default function OpenDocument() {
 
     // List Actions
     const addListItem = () => {
-        const id = crypto.randomUUID()
+        const id = newItemId()
         const newItem = { id, content: '', completed: false, quantity: '' }
         const newContent = [newItem, ...content]
         setLastAddedId(id)

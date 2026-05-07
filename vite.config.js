@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename)
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    __VERCEL_ENV__: JSON.stringify(process.env.VERCEL_ENV || ""),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

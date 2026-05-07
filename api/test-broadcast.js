@@ -32,7 +32,7 @@ export default async function handler(req, res) {
         const payload = {
             title: effectiveTitle,
             body: effectiveMsg,
-            url: "/",
+            url: "/app",
             icon: "/icon-192.png"
         };
 

@@ -3,10 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Share, PlusSquare, ArrowUp, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export default function PWAInstallPrompt() {
-    const [showPrompt, setShowPrompt] = useState(false);
+export default function PWAInstallPrompt({ alwaysShow = false }) {
+    const [showPrompt, setShowPrompt] = useState(alwaysShow);
 
     useEffect(() => {
+        if (alwaysShow) {
+            setShowPrompt(true);
+            return;
+        }
+
         // Check if running in standalone mode (PWA)
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
         if (isStandalone) return;
@@ -19,7 +24,7 @@ export default function PWAInstallPrompt() {
         if (ios) {
             setShowPrompt(true);
         }
-    }, []);
+    }, [alwaysShow]);
 
     if (!showPrompt) return null;
 
@@ -29,7 +34,10 @@ export default function PWAInstallPrompt() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[200] bg-background flex flex-col items-center justify-between p-8 text-center overflow-hidden"
+                className={cn(
+                    "inset-0 z-[200] bg-background flex flex-col items-center justify-between p-8 text-center overflow-hidden",
+                    alwaysShow ? "relative min-h-dvh" : "fixed"
+                )}
             >
                 {/* Background Glows (Optimized for Safari) */}
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full pointer-events-none transform-gpu" />

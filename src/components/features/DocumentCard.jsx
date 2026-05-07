@@ -24,12 +24,16 @@ const DocumentCard = forwardRef(({ document, isSummary, className }, ref) => {
     const { docId, docTitle, docSummary, docTags, docType, isPinned, docMetadata } = document
     const [showMenu, setShowMenu] = useState(false)
     const menuRef = useRef(null)
+    const menuButtonRef = useRef(null)
     const navigate = useNavigate()
-    const { deleteDocument, togglePin } = useDocuments()
+    const { deleteDoc, togglePin } = useDocuments()
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
+            const clickedMenu = menuRef.current?.contains(event.target)
+            const clickedButton = menuButtonRef.current?.contains(event.target)
+
+            if (!clickedMenu && !clickedButton) {
                 setShowMenu(false)
             }
         }
@@ -50,7 +54,7 @@ const DocumentCard = forwardRef(({ document, isSummary, className }, ref) => {
                 break
             case 'delete':
                 if (window.confirm('Delete this document?')) {
-                    deleteDocument(docId)
+                    deleteDoc(docId)
                 }
                 setShowMenu(false)
                 break
@@ -84,14 +88,14 @@ const DocumentCard = forwardRef(({ document, isSummary, className }, ref) => {
         >
             <Card
                 as="div"
-                onClick={() => navigate(`/document/${docId}`)}
+                onClick={() => navigate(`/app/document/${docId}`)}
                 className={cn(
                     "relative border-1 bg-card/90 hover:bg-card/100 transition-colors cursor-pointer overflow-hidden backdrop-blur-md",
                     isPinned ? "border-primary/40 shadow-[0_0_15px_rgba(59,130,246,0.1)]" : "border-secondary/70",
                     className
                 )}
             >
-                <CardHeader className="p-4 pb-2">
+                <CardHeader className={cn(isSummary ? "p-3" : "p-4", "pb-2")}>
                     <div className="flex justify-between items-start gap-2">
                         <div className="flex gap-2 items-center flex-1 min-w-0">
                             <div className="p-1.5 rounded-md bg-secondary/50 shrink-0 flex items-center gap-1.5">
@@ -103,9 +107,10 @@ const DocumentCard = forwardRef(({ document, isSummary, className }, ref) => {
                             </CardTitle>
                         </div>
                         <button
+                            ref={menuButtonRef}
                             onClick={(e) => {
                                 e.stopPropagation()
-                                setShowMenu(!showMenu)
+                                setShowMenu(open => !open)
                             }}
                             className="text-muted-foreground hover:text-foreground p-1 transition-colors"
                         >
@@ -114,7 +119,7 @@ const DocumentCard = forwardRef(({ document, isSummary, className }, ref) => {
                     </div>
                 </CardHeader>
 
-                <CardContent className="p-4 pt-1">
+                <CardContent className={cn(isSummary ? "p-3 pt-1" : "p-4 pt-1")}>
                     <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
                         {docSummary}
                     </p>

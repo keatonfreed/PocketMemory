@@ -1,12 +1,14 @@
+import { newShortId } from '@/lib/ids'
+
 export async function ensureServiceWorker() {
     if (!("serviceWorker" in navigator)) return null;
-    return await navigator.serviceWorker.register("/sw.js");
+    return await navigator.serviceWorker.register("/sw.js", { scope: "/app" });
 }
 
 function getUserKey() {
     let key = localStorage.getItem("user_key");
     if (!key) {
-        key = "anon:" + crypto.randomUUID();
+        key = "anon:" + newShortId();
         localStorage.setItem("user_key", key);
     }
     return key;
@@ -66,7 +68,7 @@ export async function createSchedule({ title, body, runAtISO, url }) {
             title,
             body,
             run_at: runAtISO,
-            url: url || "/",
+            url: url || "/app",
             icon: "/icon-192.png",
         }),
     });

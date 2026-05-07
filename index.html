@@ -3,17 +3,33 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/icon-192.png" />
   <meta name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Pocket Memory</title>
+  <meta name="description" content="A fast capture app for notes, lists, reminders, and the little things you do not want to lose." />
+  <meta name="theme-color" content="#09090b" />
 
-  <!-- PWA / Fake App Settings -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Pocket Memory" />
+  <meta property="og:description" content="A fast capture app for notes, lists, reminders, and the little things you do not want to lose." />
+  <meta property="og:image" content="/icon-512.png" />
+
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="/icon-192.png">
+
+  <script>
+    const launchedAsApp = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+    const launchedAsIosPwa = Boolean(window.navigator.standalone);
+    const appPath = "/app";
+
+    if ((launchedAsApp || launchedAsIosPwa) && !window.location.pathname.startsWith(appPath)) {
+      window.location.replace(new URL(appPath, window.location.origin));
+    }
+  </script>
 </head>
 
 <body>

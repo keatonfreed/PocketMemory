@@ -2,11 +2,10 @@
  * Analyzes content using the server-side API (Streaming).
  * Returns an async generator that yields events (progress or final actions).
  */
-export async function* queryMemory(text, context) {
-    try {
-        console.log("Querying memory for text:", text);
-        // console.log("Context:", context);
+export async function* queryMemory(text, context, { requestId } = {}) {
+    const shortId = requestId?.slice?.(0, 8) || 'unknown'
 
+    try {
         const response = await fetch('/api/queryMemory', {
             method: 'POST',
             headers: {
@@ -37,9 +36,10 @@ export async function* queryMemory(text, context) {
             for (const line of lines) {
                 if (line.trim()) {
                     try {
-                        yield JSON.parse(line);
+                        const event = JSON.parse(line);
+                        yield event;
                     } catch (e) {
-                        console.error("Failed to parse Ndjson line:", line, e);
+                        console.error(`[query-memory:${shortId}] stream.parse_failed`, { line, error: e });
                     }
                 }
             }
@@ -48,15 +48,19 @@ export async function* queryMemory(text, context) {
         // Final buffer check (though Ndjson should end with \n)
         if (buffer.trim()) {
             try {
-                yield JSON.parse(buffer);
+                const event = JSON.parse(buffer);
+                yield event;
             } catch (e) {
-                console.error("Failed to parse final Ndjson buffer:", buffer, e);
+                console.error(`[query-memory:${shortId}] stream.final_buffer_parse_failed`, { buffer, error: e });
             }
         }
 
     } catch (error) {
-        console.error("AI Error:", error);
-        yield { type: "final", data: fallbackQueryMemory(text) };
+        console.error(`[query-memory:${shortId}] failed`, error);
+        yield {
+            type: "error",
+            message: error?.message || "AI request failed",
+        };
     }
 }
 
@@ -93,13 +97,6 @@ export async function* askMemory(messages, documents) {
     }
 }
 
-function fallbackQueryMemory(text) {
-    return {
-        actions: [],
-    };
-}
-
 function fallbackAskMemory(text) {
     return "Sorry, I couldn't reach my brain right now. Try again later.";
 }
-
