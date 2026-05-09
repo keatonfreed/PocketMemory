@@ -1,4 +1,4 @@
-import { developerPromptTemplate, MODEL } from '../lib/pocket-memory-contract.mjs'
+import { MODEL } from '../lib/pocket-memory-contract.mjs'
 
 const shortId = (n) => `d${String(n).padStart(7, '0').slice(-7)}`
 
@@ -36,6 +36,18 @@ const backgroundDocs = (offset, theme) => [
   list(offset + 12, `${theme} Packing List`, `Reusable packing checklist.`, ['travel'], [item(offset + 30, 'Passport'), item(offset + 31, 'Toiletry bag')]),
 ]
 
+const needDocsPlan = (documents, docId, final) => {
+  const title = documents.find((doc) => doc.docId === docId)?.docTitle || 'the target document'
+  const actions = final?.actions || []
+  if (actions.some((action) => action.actionType === 'modifyDoc')) {
+    return `Read ${title} to preserve existing content and apply the requested edit.`
+  }
+  if (actions.some((action) => action.actionType === 'openDoc')) {
+    return `Read ${title} to choose the correct document to open.`
+  }
+  return `Read ${title} to complete the request from existing content.`
+}
+
 const example = ({
   id,
   title,
@@ -46,7 +58,9 @@ const example = ({
   toolDocId = null,
   status = 'draft',
 }) => {
-  const toolCall = toolDocId ? { name: 'get_docs', docIds: [toolDocId], callId: `call_${id.replace(/-/g, '_')}` } : null
+  const needDocs = toolDocId
+    ? { plan: needDocsPlan(documents, toolDocId, final), docIds: [toolDocId] }
+    : null
 
   return {
     id,
@@ -55,7 +69,7 @@ const example = ({
     status,
     user,
     documents,
-    toolCall,
+    needDocs,
     final,
   }
 }
@@ -93,7 +107,6 @@ const manyDocs = (offset, theme, specialDocs) => [...specialDocs, ...backgroundD
 export const dataset = {
   name: 'PocketMemory queryMemory supervised examples',
   model: MODEL,
-  promptTemplate: developerPromptTemplate,
   examples: [
     example({
       id: 'open-grocery-whats-on',

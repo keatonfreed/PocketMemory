@@ -91,12 +91,23 @@ body {
   margin: 0;
 }
 
+body.app-scroll-locked {
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 #root {
   min-height: 100dvh;
 }
 
 .app-frame {
+  position: fixed;
+  inset: 0;
   height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 /* Custom Utilities */

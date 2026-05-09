@@ -12,11 +12,10 @@ const fields = {
   title: el('titleInput'),
   category: el('categoryInput'),
   status: el('exampleStatus'),
-  toolCall: el('toolCallInput'),
+  needDocs: el('needDocsInput'),
   user: el('userInput'),
   documents: el('documentsInput'),
   final: el('finalInput'),
-  prompt: el('promptInput'),
 }
 
 function selectedExample() {
@@ -68,17 +67,17 @@ function writeCurrentFromFields() {
   example.user = fields.user.value
   example.documents = parseJsonField(fields.documents, 'Documents JSON')
   example.final = parseJsonField(fields.final, 'Final output JSON')
-  const parsedToolCalls = parseJsonField(fields.toolCall, 'Tool call JSON')
-  if (Array.isArray(parsedToolCalls)) {
-    example.toolCalls = parsedToolCalls
-    delete example.toolCall
+  const parsedNeedDocs = parseJsonField(fields.needDocs, 'Need docs JSON')
+  if (Array.isArray(parsedNeedDocs)) {
+    example.needDocs = parsedNeedDocs
   } else {
-    example.toolCall = parsedToolCalls
-    delete example.toolCalls
+    example.needDocs = parsedNeedDocs
   }
+  delete example.toolCall
+  delete example.toolCalls
   delete example.toolOutput
 
-  dataset.promptTemplate = fields.prompt.value
+  delete dataset.promptTemplate
 }
 
 function tryWriteCurrentFromFields() {
@@ -114,7 +113,7 @@ function renderList() {
         <div class="meta">
           <span class="pill ${example.status}">${example.status}</span>
           <span class="pill">${example.category || 'uncategorized'}</span>
-          <span class="pill">${Array.isArray(example.toolCalls) ? `${example.toolCalls.length} tools` : example.toolCall ? 'tool' : 'no tool'}</span>
+          <span class="pill">${Array.isArray(example.needDocs) ? `${example.needDocs.length} doc passes` : example.needDocs ? 'needs docs' : 'one pass'}</span>
           <span class="pill">${example.documents?.length || 0} docs</span>
           <button class="quick-toggle ${example.status}" type="button">${example.status === 'approved' ? 'Draft' : 'Approve'}</button>
         </div>
@@ -164,13 +163,31 @@ function renderEditor() {
   fields.category.value = example.category || ''
   fields.status.value = example.status || 'draft'
   renderStatusToggle()
-  fields.toolCall.value = JSON.stringify(example.toolCalls || example.toolCall || null, null, 2)
+  fields.needDocs.value = JSON.stringify(example.needDocs || null, null, 2)
   fields.user.value = example.user || ''
   fields.documents.value = JSON.stringify(example.documents || [], null, 2)
   fields.final.value = JSON.stringify(example.final || { actions: [] }, null, 2)
-  fields.prompt.value = dataset.promptTemplate || ''
   lastEditorError = ''
+  renderContract()
   updateStatus()
+}
+
+function setContractOutputs(contract) {
+  el('contractPromptOutput').textContent = contract?.developerPrompt || ''
+  el('contractStateOutput').textContent = (contract?.stateMessages || []).join('\n\n---\n\n')
+  el('contractToolOutput').textContent = JSON.stringify(contract?.toolDefinition || null, null, 2)
+  el('contractSchemaOutput').textContent = JSON.stringify(contract?.outputSchema || null, null, 2)
+}
+
+async function renderContract() {
+  const example = selectedExample()
+  if (!example) return
+  const response = await fetch('/api/contract-preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ example }),
+  })
+  setContractOutputs(await response.json())
 }
 
 async function load() {
@@ -234,7 +251,7 @@ async function previewLine() {
   const response = await fetch('/api/preview-line', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ example, promptTemplate: dataset.promptTemplate }),
+    body: JSON.stringify({ example }),
   })
   el('previewOutput').textContent = JSON.stringify(await response.json(), null, 2)
 }
@@ -294,6 +311,10 @@ for (const tab of document.querySelectorAll('.tab')) {
     for (const panel of document.querySelectorAll('.panel')) panel.classList.remove('active')
     tab.classList.add('active')
     el(`${tab.dataset.tab}Panel`).classList.add('active')
+    if (tab.dataset.tab === 'contract') {
+      if (!tryWriteCurrentFromFields()) return
+      await renderContract()
+    }
     if (tab.dataset.tab === 'preview') await previewLine()
   })
 }

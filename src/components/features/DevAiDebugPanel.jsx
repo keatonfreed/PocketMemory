@@ -29,6 +29,15 @@ const summarizeEvent = (event) => {
         const time = details.modelMs ? ` · ${Math.round(details.modelMs)}ms` : ''
         return `${title} · ${details.contentType || 'content'} ${details.contentLength ?? ''}${time}`
     }
+    if (event.step === 'need_docs') {
+        const title = details.docTitles?.join(', ') || details.docIds?.join(', ') || 'documents'
+        const time = details.modelMs ? ` · ${Math.round(details.modelMs)}ms` : ''
+        return `${title} · ${details.contentType || 'content'} ${details.contentLength ?? ''}${time}`
+    }
+    if (event.step === 'need_docs.denied') {
+        const ids = details.requestedDocIds?.join(', ') || 'no ids'
+        return `${details.reason || 'denied'} · ${ids}`
+    }
     if (event.step === 'tool.get_docs.denied') {
         const ids = details.docIds?.join(', ') || details.requestedDocIds?.join(', ') || 'no ids'
         return `${details.reason || 'denied'} · ${ids}`

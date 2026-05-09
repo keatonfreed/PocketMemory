@@ -275,12 +275,8 @@ textarea.short {
   font-family: inherit;
 }
 
-#toolCallInput {
+#needDocsInput {
   min-height: 96px;
-}
-
-#promptInput {
-  min-height: calc(100vh - 190px);
 }
 
 pre {
@@ -296,6 +292,21 @@ pre {
   line-height: 1.5;
 }
 
+.contract-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 12px;
+}
+
+.contract-grid label:first-child {
+  grid-row: span 3;
+}
+
+.contract-grid pre {
+  min-height: 220px;
+  max-height: calc(100vh - 220px);
+}
+
 @media (max-width: 860px) {
   .layout {
     grid-template-columns: 1fr;
@@ -308,6 +319,10 @@ pre {
   }
 
   .grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .contract-grid {
     grid-template-columns: 1fr;
   }
 }

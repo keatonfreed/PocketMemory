@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import { validateDataset } from '../lib/format.mjs'
-import { developerPromptTemplate } from '../lib/pocket-memory-contract.mjs'
 
 const DATASET_PATH = new URL('../data/examples.json', import.meta.url)
 
@@ -36,10 +35,14 @@ const backgrounds = (offset, theme) => [
   list(offset + 8, `${theme} Reading`, `Articles and books to read.`, ['reading'], [item(offset + 26, 'local-first essay'), item(offset + 27, 'database notes')]),
 ]
 
-const toolCall = (id, docIds) => ({ name: 'get_docs', docIds, callId: `call_${id.replace(/-/g, '_')}` })
-
 const example = ({ id, title, category, user, documents, final, toolDocIds = [], status = 'draft' }) => {
-  const calls = toolDocIds.length ? [toolCall(id, [...new Set(toolDocIds)])] : []
+  const docIds = [...new Set(toolDocIds)]
+  const docTitles = docIds.map((docId) => documents.find((doc) => doc.docId === docId)?.docTitle).filter(Boolean)
+  const titleLabel = docTitles.length > 1 ? docTitles.join(', ') : docTitles[0] || 'the target document'
+  const needsModify = (final?.actions || []).some((action) => action.actionType === 'modifyDoc')
+  const plan = needsModify
+    ? `Read ${titleLabel} to preserve existing content and apply the requested edit.`
+    : `Read ${titleLabel} to complete the request from existing content.`
   return {
     id,
     title,
@@ -47,7 +50,7 @@ const example = ({ id, title, category, user, documents, final, toolDocIds = [],
     status,
     user,
     documents,
-    ...(calls.length === 1 ? { toolCall: calls[0] } : calls.length > 1 ? { toolCalls: calls } : {}),
+    needDocs: docIds.length ? { plan, docIds } : null,
     final,
   }
 }
@@ -501,7 +504,7 @@ const examples = []
 const dataset = JSON.parse(fs.readFileSync(DATASET_PATH, 'utf8'))
 const byId = new Map(examples.map((entry) => [entry.id, entry]))
 
-dataset.promptTemplate = developerPromptTemplate
+delete dataset.promptTemplate
 dataset.examples = [
   ...dataset.examples.filter((entry) => !byId.has(entry.id)),
   ...examples,

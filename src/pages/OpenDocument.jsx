@@ -306,7 +306,7 @@ export default function OpenDocument() {
     if (!doc) return null
 
     return (
-        <div className="min-h-dvh flex flex-col pt-[max(48px,env(safe-area-inset-top))] px-6 pb-40 max-w-4xl mx-auto w-full relative">
+        <div className="min-h-full flex flex-col pt-[max(48px,env(safe-area-inset-top))] px-6 pb-40 max-w-4xl mx-auto w-full relative">
             <header className="mb-8 flex items-center justify-between">
                 <button
                     onClick={() => navigate(-1)}

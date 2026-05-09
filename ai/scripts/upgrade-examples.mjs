@@ -1,5 +1,4 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { developerPromptTemplate } from '../lib/pocket-memory-contract.mjs'
 
 const dataPath = new URL('../data/examples.json', import.meta.url)
 const shortId = (n) => `u${String(n).padStart(7, '0').slice(-7)}`
@@ -48,11 +47,24 @@ function normalizeDoc(doc) {
 }
 
 function normalizeExample(example) {
-  const { notes, toolOutput, ...rest } = example
+  const { notes, toolOutput, toolCall, toolCalls, ...rest } = example
+  const legacyCalls = Array.isArray(toolCalls) ? toolCalls.filter(Boolean) : (toolCall ? [toolCall] : [])
   return {
     ...rest,
+    needDocs: rest.needDocs ?? (legacyCalls.length
+      ? legacyCalls.map((call) => ({ plan: planFor(rest, call.docIds || []), docIds: call.docIds || [] }))
+      : null),
     documents: (rest.documents || []).map(normalizeDoc),
   }
+}
+
+function planFor(example, docIds = []) {
+  const titles = docIds.map((docId) => (example.documents || []).find((doc) => doc.docId === docId)?.docTitle).filter(Boolean)
+  const titleLabel = titles.length > 1 ? titles.join(', ') : titles[0] || 'the target document'
+  const needsModify = (example.final?.actions || []).some((action) => action.actionType === 'modifyDoc')
+  return needsModify
+    ? `Read ${titleLabel} to preserve existing content and apply the requested edit.`
+    : `Read ${titleLabel} to complete the request from existing content.`
 }
 
 function example({
@@ -71,7 +83,7 @@ function example({
     status: 'draft',
     user,
     documents,
-    toolCall: toolDocId ? { name: 'get_docs', docIds: [toolDocId], callId: `call_${id.replace(/-/g, '_')}` } : null,
+    needDocs: toolDocId ? { plan: planFor({ documents, final }, [toolDocId]), docIds: [toolDocId] } : null,
     final,
   }
 }
@@ -381,7 +393,7 @@ Requests:
 const dataset = JSON.parse(await readFile(dataPath, 'utf8'))
 const existingIds = new Set(dataset.examples.map((entry) => entry.id))
 
-dataset.promptTemplate = developerPromptTemplate
+delete dataset.promptTemplate
 dataset.examples = dataset.examples.map(normalizeExample)
 
 for (const entry of additions) {

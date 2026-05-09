@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dataset as seedDataset } from './data/examples.seed.mjs'
-import { exampleToFineTuneLine, exportJsonl, stripEditorOnlyFields, validateDataset } from './lib/format.mjs'
+import { assembledContractForExample, exampleToFineTuneLine, exportJsonl, stripEditorOnlyFields, validateDataset } from './lib/format.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dataPath = path.join(__dirname, 'data', 'examples.json')
@@ -80,8 +80,13 @@ async function routeApi(req, res, url) {
   }
 
   if (url.pathname === '/api/preview-line' && req.method === 'POST') {
-    const { example, promptTemplate } = await readRequestJson(req)
-    return sendJson(res, 200, exampleToFineTuneLine(example, promptTemplate))
+    const { example } = await readRequestJson(req)
+    return sendJson(res, 200, exampleToFineTuneLine(example))
+  }
+
+  if (url.pathname === '/api/contract-preview' && req.method === 'POST') {
+    const { example } = await readRequestJson(req)
+    return sendJson(res, 200, assembledContractForExample(example))
   }
 
   return false

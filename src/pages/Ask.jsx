@@ -126,7 +126,7 @@ export default function Ask() {
     }
 
     return (
-        <div className="min-h-dvh max-h-dvh flex flex-col pt-[max(48px,env(safe-area-inset-top))] px-4 pb-32 relative overflow-hidden">
+        <div className="h-full min-h-0 flex flex-col pt-[max(48px,env(safe-area-inset-top))] px-4 pb-32 relative overflow-hidden">
             <header className="flex justify-center mb-6 border-b border-white/5 pb-4 shrink-0">
                 <div className="uppercase tracking-[0.2em] text-[10px] text-primary font-bold flex items-center gap-2">
                     <Sparkles size={12} /> Neural Interface
@@ -135,7 +135,7 @@ export default function Ask() {
 
             {/* Message Container Area */}
             <div
-                className="flex-1 relative h-full overflow-hidden ">
+                className="flex-1 min-h-0 relative overflow-hidden ">
                 {/* Top Fade Mask */}
                 <div className={cn(
                     "absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none transition-opacity duration-500",

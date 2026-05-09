@@ -1,7 +1,6 @@
 {
   "name": "PocketMemory queryMemory supervised examples",
   "model": "gpt-4.1-mini",
-  "promptTemplate": "# Role and Objective\nYou are \"Pocket Memory\", a second-brain assistant that translates a single user message into specific app actions.\n\nYour responsibility is to interpret the user's latest message and decide what, if anything, the app should do in response.\n\n---\n\n# Instructions\n- If the user types complete gibberish, or has absolutely no clear intent, do not output any actions.\n- Attempt to understand intent even with spelling mistakes or unclear phrasing.\n- Respond with clear, confident app actions.\n- Prefer existing documents when at all possible.\n- Editing an existing matching document is higher priority than creating a new one.\n- Only create a new document if none is clearly suitable, or if the user explicitly asks for a new/separate document.\n- Avoid duplicates.\n- Do not hallucinate document edits or IDs.\n- Use only docIds that appear verbatim in the provided Existing documents list. Never invent, shorten, transform, or guess a docId.\n- If the user gives an actionable instruction, make a careful best judgment rather than dropping the request.\n- Only do nothing for gibberish, obvious testing, playful typing, or truly impossible/unsafe ambiguity.\n\nYou will be given:\n1) The user's message.\n2) A list of the user's existing documents (each has: `[docId] docTitle: docSummary` (docType - listType sometimes) [optional docTags]).\n\nThe document list is for selection only. It does NOT contain document content.\n\n---\n\n## Core Action Types\n- **createDoc**\n  Create a new document to capture new, reusable information that does not clearly belong in an existing document.\n\n- **openDoc**\n  Open an existing document when the user asks to open, show, view, pull up, inspect, or asks what's on a named list/document in capture mode. Do not add openDoc after create/modify/delete unless the user explicitly asks to open it.\n\n- **modifyDoc**\n  Change an existing document when the user gives edits such as adding list items, marking items done, changing note text, or deleting list items.\n\n- **deleteDoc**\n  Delete a whole document ONLY when deletion is explicit and unambiguous. If the user says delete/remove a word, item, typo, random text, or part of a document, that is modifyDoc, not deleteDoc.\n\n---\n\n## Document Selection\nWhen an action involves a document:\n1) Match by exact or similar title first.\n2) Then match by summary, document type, list type, tags, pinned/visible ordering, or practical everyday intent.\n3) If the user says \"the list\" and one grocery list exists, prefer it.\n4) If the request mentions an existing title/topic and the document list contains a close match, prefer modifying/opening/deleting that existing document over creating a duplicate.\n5) If the request is actionable and one document is a clearly better fit, use it.\n6) If several documents are equally plausible and the wrong choice would be harmful, output no actions.\n\nIf one user message asks for multiple independent actions, output every requested action in the same final response.\n\nIf the user gives a count or range such as \"3-5 things\", create that many concrete useful items. Do not add a literal item whose text is \"3-5 things\".\n\n---\n\n## Tool Use: get_docs\n- Call get_docs only when the next correct step truly needs full document content.\n- Usually do not call get_docs for open/show/view/what's-on/create/delete when the visible document list is enough.\n- Usually one get_docs call is enough.\n- If the user asks to edit one document, call get_docs exactly once with that one docId, then output the final modifyDoc action.\n- Include multiple different docIds in one get_docs call only when one user request truly requires content from several documents, such as editing several docs or using one doc as source material for new docs.\n- Do not fetch multiple documents for a one-document edit.\n- Never request the same docId more than once in one user message.\n- Every docId passed to get_docs must be copied exactly from the Existing documents list. If no listed docId confidently matches the user's target, output no actions instead of calling get_docs.\n- A get_docs output is the complete document set for those docIds, even if a document is empty or surprising.\n- If docContent for a docId is already present in a tool output, reuse it.\n- After receiving a get_docs output, either fetch any still-required unique documents or produce the final JSON actions.\n- For list documents, get_docs returns docContent items as { itemId, itemContent, itemCompleted }. Always use itemId from that output when editing or deleting existing list items.\n\nTimeline for edits:\n1) First turn: choose all docIds that truly need content and call get_docs once with a docIds array.\n2) After tool output: read that docContent, then output final modifyDoc actions.\n3) Never call get_docs again for a docId that already has a tool output.\n\n---\n\n## Content-Gated Actions\nYou may output modifyDoc only after a get_docs tool output for that exact docId is present in the conversation. You may also use get_docs for other actions when the user explicitly asks for work that truly depends on hidden document content.\n\nIf the user wants to modify a document, or otherwise needs hidden document content, and you do NOT yet have docContent:\n- Call get_docs with the single best-matching docId in the docIds array.\n- Do not output app actions in the same response as a tool call.\n- Stop after the tool call unless the API later returns the tool output; after tool output, either fetch another required unique document or output the final actions.\n\nEmpty docContent is valid docContent. Do not call get_docs again just because it is empty.\n\n---\n\n## Mods\nWhen outputting modifyDoc:\n- Always include the docId.\n- Always include an ordered array of mods.\n- All edits must be based strictly on the provided docContent.\n\n### For list documents:\n- **addListItem**: add a new item, usually itemCompleted=false.\n- **editListItem**: replace an existing item's full text and completed state using itemId from get_docs.\n- **deleteListItem**: permanently remove an item using itemId from get_docs when the user says delete/remove/take out.\n- Mark/check/cross off/done/got/bought means editListItem with itemCompleted=true.\n- Restore/uncheck/put back means editListItem with itemCompleted=false.\n\n### For note documents:\n- **editNote** replaces the ENTIRE document content.\n- Preserve all existing note content unless the user explicitly asks to remove or rewrite it.\n- If a note contains hashtags, bullets, lines, or paragraphs, still use editNote. Never use addListItem/editListItem/deleteListItem on a note.\n\n---\n\n## Output Hygiene\n- Return a single JSON object with an \"actions\" array.\n- Do not include extra text.\n- Keep items concise and preserve user wording.\n- Clean obvious spelling/typing mistakes when creating polished notes, but preserve the user's intended meaning and specific details.\n- Do not add openDoc after another action unless explicitly requested.\n\n---\n\n# Context\nExisting documents:\n{{DOCUMENT_CONTEXT}}",
   "examples": [
     {
       "id": "open-grocery-whats-on",
@@ -328,7 +327,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -338,7 +336,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "open-specific-note",
@@ -616,7 +615,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -626,7 +624,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "delete-whole-document-explicit",
@@ -892,7 +891,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -902,7 +900,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "create-note-no-existing-fit",
@@ -1180,7 +1179,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -1196,7 +1194,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "create-new-list-explicit",
@@ -1505,7 +1504,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -1529,7 +1527,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "noop-gibberish",
@@ -1825,10 +1824,10 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "add-milk-best-judgment",
@@ -2172,13 +2171,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000001"
-        ],
-        "callId": "call_add_milk_best_judgment"
-      },
       "final": {
         "actions": [
           {
@@ -2196,6 +2188,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List so milk can be added to the existing household list without duplicating items.",
+        "docIds": [
+          "d0000001"
         ]
       }
     },
@@ -2541,13 +2539,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000002"
-        ],
-        "callId": "call_add_bulk_item_costco"
-      },
       "final": {
         "actions": [
           {
@@ -2565,6 +2556,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Costco Run so the laundry detergent item is added to the bulk shopping list.",
+        "docIds": [
+          "d0000002"
         ]
       }
     },
@@ -2880,13 +2877,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000001"
-        ],
-        "callId": "call_mark_item_done"
-      },
       "final": {
         "actions": [
           {
@@ -2905,6 +2895,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to find the bananas itemId and mark that item completed.",
+        "docIds": [
+          "d0000001"
         ]
       }
     },
@@ -3220,13 +3216,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000001"
-        ],
-        "callId": "call_restore_item"
-      },
       "final": {
         "actions": [
           {
@@ -3245,6 +3234,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to find the oat milk itemId and mark it needed again.",
+        "docIds": [
+          "d0000001"
         ]
       }
     },
@@ -3561,13 +3556,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000001"
-        ],
-        "callId": "call_delete_list_item"
-      },
       "final": {
         "actions": [
           {
@@ -3584,6 +3572,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to find the spinach itemId and delete that list item.",
+        "docIds": [
+          "d0000001"
         ]
       }
     },
@@ -3899,13 +3893,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000001"
-        ],
-        "callId": "call_multiple_list_edits_one_fetch"
-      },
       "final": {
         "actions": [
           {
@@ -3931,6 +3918,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List once to add yogurt and find the eggs itemId to mark completed.",
+        "docIds": [
+          "d0000001"
         ]
       }
     },
@@ -4200,13 +4193,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000004"
-        ],
-        "callId": "call_edit_note_append"
-      },
       "final": {
         "actions": [
           {
@@ -4223,6 +4209,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Launch Notes to preserve the note while appending the 20 second demo reminder.",
+        "docIds": [
+          "d0000004"
         ]
       }
     },
@@ -4519,13 +4511,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000030"
-        ],
-        "callId": "call_edit_empty_note"
-      },
       "final": {
         "actions": [
           {
@@ -4542,6 +4527,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Weekend Ideas to confirm its current note content before adding the weekend ideas.",
+        "docIds": [
+          "d0000030"
         ]
       }
     },
@@ -4822,7 +4813,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -4832,7 +4822,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "create-explicit-separate-even-similar",
@@ -5147,7 +5138,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -5171,7 +5161,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "delete-ambiguous-doc-noop",
@@ -5437,10 +5428,10 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "edit-specific-list-item-text",
@@ -5754,13 +5745,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000002"
-        ],
-        "callId": "call_edit_specific_list_item_text"
-      },
       "final": {
         "actions": [
           {
@@ -5779,6 +5763,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Costco Run to find the paper towels itemId and rename it to Kirkland paper towels.",
+        "docIds": [
+          "d0000002"
         ]
       }
     },
@@ -6614,7 +6604,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -6624,7 +6613,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "giant-context-modify-one-fetch",
@@ -7113,13 +7103,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000281"
-        ],
-        "callId": "call_giant_context_modify_one_fetch"
-      },
       "final": {
         "actions": [
           {
@@ -7137,6 +7120,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Work Follow Ups to add Sam renewal date to the correct work list in the large context.",
+        "docIds": [
+          "d0000281"
         ]
       }
     },
@@ -7223,7 +7212,6 @@
           "docContent": "Dr. Rivera\nMain Street Dental\nNext cleaning: May 18 at 9:30 AM"
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -7237,7 +7225,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "typo-heavy-modify",
@@ -7552,13 +7541,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000001"
-        ],
-        "callId": "call_typo_heavy_modify"
-      },
       "final": {
         "actions": [
           {
@@ -7576,6 +7558,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to add tortillas despite the typo-heavy grocery request.",
+        "docIds": [
+          "d0000001"
         ]
       }
     },
@@ -7904,7 +7892,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -7914,7 +7901,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "delete-whole-list-explicit",
@@ -8258,7 +8246,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -8268,7 +8255,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "add-camping-food-best-match",
@@ -8612,13 +8600,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000003"
-        ],
-        "callId": "call_add_camping_food_best_match"
-      },
       "final": {
         "actions": [
           {
@@ -8636,6 +8617,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Camping Food to add marshmallows to the Yosemite food list.",
+        "docIds": [
+          "d0000003"
         ]
       }
     },
@@ -8952,13 +8939,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000002"
-        ],
-        "callId": "call_done_word_bought"
-      },
       "final": {
         "actions": [
           {
@@ -8977,6 +8957,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Costco Run to find coffee beans and mark that bought item completed.",
+        "docIds": [
+          "d0000002"
         ]
       }
     },
@@ -9268,13 +9254,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000044"
-        ],
-        "callId": "call_note_rewrite_specific_line"
-      },
       "final": {
         "actions": [
           {
@@ -9291,6 +9270,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Client Invoice Notes to preserve the note and update only Beta Co to PO received.",
+        "docIds": [
+          "d0000044"
         ]
       }
     },
@@ -9576,7 +9561,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -9601,7 +9585,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "ambiguous-list-equally-plausible-noop",
@@ -9878,10 +9863,10 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "random-playful-noop",
@@ -10207,10 +10192,10 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "obvious-test-noop",
@@ -10414,10 +10399,10 @@
           "docContent": "Acme: sent March invoice.\nBeta Co: waiting on PO.\nCobalt: paid through April."
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "hard-clear-single-grocery-add",
@@ -10479,13 +10464,6 @@
           "docContent": "Market closes at 9 PM."
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000398"
-        ],
-        "callId": "call_hard_clear_single_grocery_add"
-      },
       "final": {
         "actions": [
           {
@@ -10503,6 +10481,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to add blueberries to the single clear grocery target.",
+        "docIds": [
+          "d0000398"
         ]
       }
     },
@@ -10727,13 +10711,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000403"
-        ],
-        "callId": "call_hard_pick_emergency_kit_from_close_lists"
-      },
       "final": {
         "actions": [
           {
@@ -10751,6 +10728,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Emergency Kit to add AA batteries to emergency supplies rather than nearby shopping lists.",
+        "docIds": [
+          "d0000403"
         ]
       }
     },
@@ -10914,13 +10897,6 @@
           "docContent": "Beta feedback themes\n\nPositive:\n- People like the one-box capture flow.\n- Push reminders feel useful when they are rare.\n\nConfusing:\n- Some users expect \"what's on grocery\" to show the list.\n- Some users type fragments and expect the app to infer the target.\n\nRequests:\n- Better install instructions.\n- More obvious saved state after capture.\n- Ability to edit examples before training."
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000400"
-        ],
-        "callId": "call_hard_pick_camera_not_office"
-      },
       "final": {
         "actions": [
           {
@@ -10938,6 +10914,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Camera Bag Checklist to add lens wipes to the camera bag list, not office supplies.",
+        "docIds": [
+          "d0000400"
         ]
       }
     },
@@ -11112,13 +11094,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000405"
-        ],
-        "callId": "call_hard_target_not_first_long_note_edit"
-      },
       "final": {
         "actions": [
           {
@@ -11135,6 +11110,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Quarterly Planning to preserve the long note while adding Dana as weekly metrics owner.",
+        "docIds": [
+          "d0000405"
         ]
       }
     },
@@ -11285,13 +11266,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000406"
-        ],
-        "callId": "call_hard_edit_long_feedback_note"
-      },
       "final": {
         "actions": [
           {
@@ -11308,6 +11282,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Beta Feedback to append the approve-button feedback while preserving existing reactions.",
+        "docIds": [
+          "d0000406"
         ]
       }
     },
@@ -11403,13 +11383,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000398"
-        ],
-        "callId": "call_hard_similar_items_mark_one_done"
-      },
       "final": {
         "actions": [
           {
@@ -11428,6 +11401,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to distinguish almond milk from other milk items and mark it completed.",
+        "docIds": [
+          "d0000398"
         ]
       }
     },
@@ -11591,7 +11570,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -11601,7 +11579,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "hard-create-multiple-documents",
@@ -11677,7 +11656,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -11714,7 +11692,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "hard-create-two-separate-notes",
@@ -11809,7 +11788,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -11837,7 +11815,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "hard-action-from-casual-grocery-need",
@@ -11949,13 +11928,6 @@
           "docContent": "Airport garage: level 4, row D.\nDowntown garage: level 2 near west elevator."
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000412"
-        ],
-        "callId": "call_hard_action_from_casual_grocery_need"
-      },
       "final": {
         "actions": [
           {
@@ -11973,6 +11945,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to add cold brew from the casual out-of-stock message.",
+        "docIds": [
+          "d0000412"
         ]
       }
     },
@@ -12062,7 +12040,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -12078,7 +12055,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "hard-fragment-open-existing-costco",
@@ -12202,7 +12180,6 @@
           ]
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": [
           {
@@ -12212,7 +12189,8 @@
             }
           }
         ]
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "hard-insert-middle-support-plan",
@@ -12311,13 +12289,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000417"
-        ],
-        "callId": "call_hard_insert_middle_support_plan"
-      },
       "final": {
         "actions": [
           {
@@ -12334,6 +12305,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Support Plan to insert the workaround line under Response style without moving other sections.",
+        "docIds": [
+          "d0000417"
         ]
       }
     },
@@ -12434,13 +12411,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000416"
-        ],
-        "callId": "call_hard_refactor_launch_plan_without_losing_data"
-      },
       "final": {
         "actions": [
           {
@@ -12457,6 +12427,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Launch Plan to reorganize it into Now, Later, and Risks while preserving all details.",
+        "docIds": [
+          "d0000416"
         ]
       }
     },
@@ -12557,13 +12533,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000419"
-        ],
-        "callId": "call_hard_add_paragraph_middle_road_trip"
-      },
       "final": {
         "actions": [
           {
@@ -12580,6 +12549,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Road Trip Plan to insert the hotel dog-fee detail after the Lodging section.",
+        "docIds": [
+          "d0000419"
         ]
       }
     },
@@ -12693,13 +12668,6 @@
           "docContent": "Airport garage: level 4, row D.\nDowntown garage: level 2 near west elevator."
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000421"
-        ],
-        "callId": "call_hard_create_note_and_update_tahoe_groceries"
-      },
       "final": {
         "actions": [
           {
@@ -12750,6 +12718,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Tahoe Groceries to add the requested cabin food while separately creating the wifi note.",
+        "docIds": [
+          "d0000421"
         ]
       }
     },
@@ -12860,13 +12834,6 @@
           "docContent": "Try new ramen place.\nRemember to return cable."
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000422"
-        ],
-        "callId": "call_hard_create_from_fetched_itinerary_and_mark_source"
-      },
       "final": {
         "actions": [
           {
@@ -12895,6 +12862,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Tahoe Itinerary to extract arrival details for a new note and mark that source updated.",
+        "docIds": [
+          "d0000422"
         ]
       }
     },
@@ -13094,13 +13067,6 @@
           "docContent": []
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000433"
-        ],
-        "callId": "call_failure_existing_empty_powers_list_1"
-      },
       "final": {
         "actions": [
           {
@@ -13146,6 +13112,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Superman Powers to confirm the existing empty list before adding the requested powers.",
+        "docIds": [
+          "d0000433"
         ]
       }
     },
@@ -13333,13 +13305,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000434"
-        ],
-        "callId": "call_failure_existing_grocery_no_create_no_open_1"
-      },
       "final": {
         "actions": [
           {
@@ -13371,6 +13336,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Grocery List to add bananas, potatoes, and peanuts to the existing list only.",
+        "docIds": [
+          "d0000434"
         ]
       }
     },
@@ -13533,13 +13504,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000444"
-        ],
-        "callId": "call_failure_add_hashtags_to_note_use_edit_note_1"
-      },
       "final": {
         "actions": [
           {
@@ -13556,6 +13520,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read New Hashtags to append the requested hashtags as note text, not list items.",
+        "docIds": [
+          "d0000444"
         ]
       }
     },
@@ -13718,13 +13688,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000444"
-        ],
-        "callId": "call_failure_remove_hashtag_from_note_use_edit_note_1"
-      },
       "final": {
         "actions": [
           {
@@ -13741,6 +13704,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read New Hashtags to remove only the lifelog hashtag while preserving the rest.",
+        "docIds": [
+          "d0000444"
         ]
       }
     },
@@ -13903,13 +13872,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000444"
-        ],
-        "callId": "call_failure_add_lines_to_note_not_list_items_1"
-      },
       "final": {
         "actions": [
           {
@@ -13926,6 +13888,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read New Hashtags to add launch caption ideas inside the note content.",
+        "docIds": [
+          "d0000444"
         ]
       }
     },
@@ -14115,13 +14083,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000478"
-        ],
-        "callId": "call_failure_all_means_topic_items_not_literal_word_1"
-      },
       "final": {
         "actions": [
           {
@@ -14160,6 +14121,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Spider-Man Powers to add actual powers instead of the literal word all.",
+        "docIds": [
+          "d0000478"
         ]
       }
     },
@@ -14359,13 +14326,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000487"
-        ],
-        "callId": "call_failure_remove_literal_word_from_list_1"
-      },
       "final": {
         "actions": [
           {
@@ -14382,6 +14342,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Supermans Powers to remove the literal word all from the affected list item.",
+        "docIds": [
+          "d0000487"
         ]
       }
     },
@@ -14567,13 +14533,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000488"
-        ],
-        "callId": "call_failure_split_combined_season_list_1"
-      },
       "final": {
         "actions": [
           {
@@ -14658,6 +14617,12 @@
               "docId": "d0000488"
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read All 4 Seasons Prep to turn its content into four separate season lists before deleting it.",
+        "docIds": [
+          "d0000488"
         ]
       }
     },
@@ -14893,7 +14858,7 @@
           }
         ]
       },
-      "toolCall": null
+      "needDocs": null
     },
     {
       "id": "failure-clean-random-text-in-note-not-delete-doc",
@@ -15054,13 +15019,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000505"
-        ],
-        "callId": "call_failure_clean_random_text_in_note_not_delete_doc_1"
-      },
       "final": {
         "actions": [
           {
@@ -15077,6 +15035,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Donuts to remove unrelated random text while keeping donut-related note content.",
+        "docIds": [
+          "d0000505"
         ]
       }
     },
@@ -15250,13 +15214,6 @@
           "docContent": "Best kinds of donuts:\n- Chocolate\n- Glazed\n- Liek onyl from ksitpry kras in area\n\nLiek, crunchier the better."
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000523"
-        ],
-        "callId": "call_failure_fix_spelling_existing_donut_note_1"
-      },
       "final": {
         "actions": [
           {
@@ -15273,6 +15230,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Best Kinds of Donuts to fix spelling while preserving all donut information.",
+        "docIds": [
+          "d0000523"
         ]
       }
     },
@@ -15446,13 +15409,6 @@
           "docContent": "Best kinds of donuts:\n- Chocolate\n- Glazed\n- Liek onyl from ksitpry kras in area\n\nLiek, crunchier the better."
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000523"
-        ],
-        "callId": "call_failure_delete_duplicate_and_edit_original_1"
-      },
       "final": {
         "actions": [
           {
@@ -15475,6 +15431,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Best Kinds of Donuts to preserve all info while fixing spelling after deleting the empty duplicate.",
+        "docIds": [
+          "d0000523"
         ]
       }
     },
@@ -15642,7 +15604,7 @@
           }
         ]
       },
-      "toolCall": null
+      "needDocs": null
     },
     {
       "id": "failure-add-to-empty-existing-note",
@@ -15803,13 +15765,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000540"
-        ],
-        "callId": "call_failure_add_to_empty_existing_note_1"
-      },
       "final": {
         "actions": [
           {
@@ -15826,6 +15781,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Banana Liking to append the peeled-banana preference to the existing note.",
+        "docIds": [
+          "d0000540"
         ]
       }
     },
@@ -16136,15 +16097,14 @@
           }
         ]
       },
-      "toolCall": {
-        "name": "get_docs",
+      "needDocs": {
+        "plan": "Read all season prep docs so Spring style can guide useful additions to the empty season lists.",
         "docIds": [
           "d0000549",
           "d0000550",
           "d0000551",
           "d0000552"
-        ],
-        "callId": "call_failure_use_source_doc_for_new_season_docs"
+        ]
       }
     },
     {
@@ -16427,15 +16387,14 @@
           }
         ]
       },
-      "toolCall": {
-        "name": "get_docs",
+      "needDocs": {
+        "plan": "Read all four season prep docs to add the sunblock reminder to each existing list.",
         "docIds": [
           "d0000549",
           "d0000550",
           "d0000551",
           "d0000552"
-        ],
-        "callId": "call_failure_edit_four_season_docs_with_multiple_tools"
+        ]
       }
     },
     {
@@ -16659,13 +16618,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000569"
-        ],
-        "callId": "call_failure_delete_list_items_by_prefix_1"
-      },
       "final": {
         "actions": [
           {
@@ -16688,6 +16640,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Spring Prep to find every item starting with p and delete those itemIds.",
+        "docIds": [
+          "d0000569"
         ]
       }
     },
@@ -16930,7 +16888,7 @@
           }
         ]
       },
-      "toolCall": null
+      "needDocs": null
     },
     {
       "id": "failure-single-edit-fetch-once-then-final",
@@ -17116,13 +17074,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000596"
-        ],
-        "callId": "call_failure_single_edit_fetch_once_then_final_1"
-      },
       "final": {
         "actions": [
           {
@@ -17161,6 +17112,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read HR Spring Prep to add several useful prep items in one final edit.",
+        "docIds": [
+          "d0000596"
         ]
       }
     },
@@ -17352,13 +17309,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000606"
-        ],
-        "callId": "call_failure_delete_first_and_add_range_items_1"
-      },
       "final": {
         "actions": [
           {
@@ -17403,6 +17353,12 @@
               ]
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Spring Prep to delete the first item and add several better spring prep items.",
+        "docIds": [
+          "d0000606"
         ]
       }
     },
@@ -17462,10 +17418,10 @@
           "docContent": "Try the Thursday set at Blue Room.\nAsk Nia if she wants to go."
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "short-greeting-hello-pocket-memory-noop",
@@ -17521,10 +17477,10 @@
           "docContent": "White bean with rosemary worked well.\nNeeds more lemon next time."
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "short-greeting-morning-noop",
@@ -17581,10 +17537,10 @@
           "docContent": "A field guide to clouds.\nUsed copy of The Lathe of Heaven."
         }
       ],
-      "toolCall": null,
       "final": {
         "actions": []
-      }
+      },
+      "needDocs": null
     },
     {
       "id": "draft-preference-note-over-grocery-bananas-open",
@@ -17670,13 +17626,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000932"
-        ],
-        "callId": "call_draft_preference_note_over_grocery_bananas_open"
-      },
       "final": {
         "actions": [
           {
@@ -17699,6 +17648,12 @@
               "docId": "d0000932"
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Banana Liking to append the chocolate-covered banana preference and then open that note.",
+        "docIds": [
+          "d0000932"
         ]
       }
     },
@@ -17788,13 +17743,6 @@
           ]
         }
       ],
-      "toolCall": {
-        "name": "get_docs",
-        "docIds": [
-          "d0000942"
-        ],
-        "callId": "call_draft_preference_note_over_grocery_coffee_open"
-      },
       "final": {
         "actions": [
           {
@@ -17817,6 +17765,12 @@
               "docId": "d0000942"
             }
           }
+        ]
+      },
+      "needDocs": {
+        "plan": "Read Coffee Preferences to append the cold brew oat milk preference and then open that note.",
+        "docIds": [
+          "d0000942"
         ]
       }
     }

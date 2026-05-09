@@ -1,19 +1,19 @@
-import { developerPromptTemplate, getDocumentTool, MODEL } from './pocket-memory-contract.mjs'
+import {
+  MODEL,
+  buildQueryMemoryContentStateMessage,
+  buildQueryMemoryDeveloperPrompt,
+  buildQueryMemoryDocumentContext,
+  buildQueryMemoryIntentStateMessage,
+  getDocumentTool,
+  queryMemoryOutputSchema,
+} from './pocket-memory-contract.mjs'
 
 export function buildDocumentContext(documents = []) {
-  if (!documents.length) return ''
-
-  return documents.map((doc) => {
-    const listType = doc.docMetadata?.listType || doc.listType
-    const tags = doc.docTags || []
-    const typeLabel = `${doc.docType}${listType ? ` - ${listType}` : ''}`
-    const tagLabel = tags.length ? ` [${tags.join(', ')}]` : ''
-    return `- \`[${doc.docId}] ${doc.docTitle}: ${doc.docSummary}\` (${typeLabel})${tagLabel}`
-  }).join('\n')
+  return buildQueryMemoryDocumentContext(documents)
 }
 
-export function renderDeveloperPrompt(example, promptTemplate = developerPromptTemplate) {
-  return promptTemplate.replace('{{DOCUMENT_CONTEXT}}', buildDocumentContext(example.documents || []))
+export function renderDeveloperPrompt(example) {
+  return buildQueryMemoryDeveloperPrompt(example.documents || [])
 }
 
 export function findDocument(example, docId) {
@@ -26,6 +26,43 @@ export function getExampleToolCalls(example) {
     ...call,
     docIds: Array.isArray(call.docIds) ? call.docIds : (call.docId ? [call.docId] : []),
   }))
+}
+
+export function getExampleDocRequests(example) {
+  const requests = Array.isArray(example.needDocs)
+    ? example.needDocs.filter(Boolean)
+    : example.needDocs
+      ? [example.needDocs]
+      : getExampleToolCalls(example).map((call) => ({
+        plan: call.plan || defaultNeedDocsPlan(example),
+        docIds: call.docIds,
+      }))
+
+  return requests.map((request) => ({
+    plan: String(request?.plan || defaultNeedDocsPlan(example)).slice(0, 200),
+    docIds: [...new Set(Array.isArray(request?.docIds) ? request.docIds : [])],
+  })).filter((request) => request.docIds.length)
+}
+
+export function defaultNeedDocsPlan(example) {
+  const actions = Array.isArray(example.final?.actions) ? example.final.actions : []
+  const docIds = [...new Set(actions
+    .map((action) => action.actionPayload?.docId)
+    .filter(Boolean))]
+  const titles = docIds
+    .map((docId) => findDocument(example, docId)?.docTitle)
+    .filter(Boolean)
+  const titleLabel = titles.length > 1
+    ? titles.length <= 3 ? titles.join(', ') : `${titles.slice(0, 3).join(', ')}, and related docs`
+    : titles[0] || 'the target document'
+
+  if (actions.some((action) => action.actionType === 'modifyDoc')) {
+    return `Read ${titleLabel} to preserve existing content and apply the requested edit.`
+  }
+  if (actions.some((action) => action.actionType === 'openDoc')) {
+    return `Read ${titleLabel} to choose the correct document to open.`
+  }
+  return `Read ${titleLabel} to complete the request from existing content.`
 }
 
 export function toAiListItem(item) {
@@ -78,58 +115,99 @@ export function toolOutputForDocuments(docs) {
   }
 }
 
-export function exampleToMessages(example, promptTemplate = developerPromptTemplate) {
+export function docContentEnvelopeForDocuments(docs) {
+  const docContentById = {}
+  for (const doc of docs.filter(Boolean)) {
+    docContentById[doc.docId] = {
+      docId: doc.docId,
+      docTitle: doc.docTitle,
+      docSummary: doc.docSummary,
+      docType: doc.docType,
+      docTags: doc.docTags || [],
+      docMetadata: doc.docMetadata || {},
+      docContent: toAiDocContent(doc),
+    }
+  }
+
+  return {
+    fetchedDocIds: Object.keys(docContentById),
+    docContentById,
+  }
+}
+
+export function intentStateMessage() {
+  return buildQueryMemoryIntentStateMessage()
+}
+
+export function contentStateMessage(envelope) {
+  return buildQueryMemoryContentStateMessage(envelope)
+}
+
+export function finalResult(final) {
+  return {
+    resultType: 'final',
+    plan: null,
+    docIds: null,
+    actions: Array.isArray(final?.actions) ? final.actions : [],
+  }
+}
+
+export function exampleToMessages(example) {
   const messages = [
-    { role: 'developer', content: renderDeveloperPrompt(example, promptTemplate) },
+    { role: 'developer', content: renderDeveloperPrompt(example) },
+    { role: 'developer', content: intentStateMessage() },
     { role: 'user', content: example.user },
   ]
 
-  for (const [index, toolCall] of getExampleToolCalls(example).entries()) {
-    if (toolCall?.name !== 'get_docs') continue
-
-    const callId = toolCall.callId || `call_${example.id.replace(/[^a-zA-Z0-9_]/g, '_')}_${index + 1}`
+  for (const request of getExampleDocRequests(example)) {
     messages.push({
       role: 'assistant',
-      tool_calls: [{
-        id: callId,
-        type: 'function',
-        function: {
-          name: 'get_docs',
-          arguments: JSON.stringify({ docIds: toolCall.docIds }),
-        },
-      }],
+      content: JSON.stringify({ resultType: 'needDocs', plan: request.plan, docIds: request.docIds, actions: null }),
     })
 
-    const toolOutput = toolOutputForDocuments(toolCall.docIds.map((docId) => findDocument(example, docId)).filter(Boolean))
+    const envelope = docContentEnvelopeForDocuments(request.docIds.map((docId) => findDocument(example, docId)).filter(Boolean))
     messages.push({
-      role: 'tool',
-      tool_call_id: callId,
-      content: JSON.stringify(toolOutput),
+      role: 'developer',
+      content: contentStateMessage(envelope),
     })
   }
 
   messages.push({
     role: 'assistant',
-    content: JSON.stringify(example.final),
+    content: JSON.stringify(finalResult(example.final)),
   })
 
   return messages
 }
 
-export function exampleToFineTuneLine(example, promptTemplate = developerPromptTemplate) {
+export function exampleToFineTuneLine(example) {
   return {
-    messages: exampleToMessages(example, promptTemplate),
-    tools: [getDocumentTool],
-    parallel_tool_calls: false,
+    messages: exampleToMessages(example),
   }
 }
 
 export function exportJsonl(dataset) {
-  const promptTemplate = dataset.promptTemplate || developerPromptTemplate
   return (dataset.examples || [])
     .filter((example) => example.status === 'approved')
-    .map((example) => JSON.stringify(exampleToFineTuneLine(example, promptTemplate)))
+    .map((example) => JSON.stringify(exampleToFineTuneLine(example)))
     .join('\n')
+}
+
+export function assembledContractForExample(example) {
+  const docRequests = getExampleDocRequests(example)
+  return {
+    model: MODEL,
+    developerPrompt: renderDeveloperPrompt(example),
+    stateMessages: [
+      intentStateMessage(),
+      ...docRequests.map((request) => {
+        const envelope = docContentEnvelopeForDocuments(request.docIds.map((docId) => findDocument(example, docId)).filter(Boolean))
+        return contentStateMessage(envelope)
+      }),
+    ],
+    toolDefinition: getDocumentTool,
+    outputSchema: queryMemoryOutputSchema,
+  }
 }
 
 function hasString(value) {
@@ -158,43 +236,43 @@ function validateCreatePayload(payload, errors) {
   }
 }
 
-function validateToolCall(example, toolCall, errors, seenDocIds) {
-  if (toolCall.name !== 'get_docs') errors.push('Only get_docs tool calls are supported')
-  if (!Array.isArray(toolCall.docIds) || toolCall.docIds.length === 0) errors.push('toolCall.docIds is required')
-  for (const docId of toolCall.docIds || []) {
-    if (seenDocIds.has(docId)) errors.push(`Duplicate get_docs docId: ${docId}`)
+function validateDocRequest(example, request, errors, seenDocIds) {
+  if (!hasString(request.plan)) errors.push('needDocs.plan must be a non-empty string')
+  if (request.plan && request.plan.length > 200) errors.push('needDocs.plan must be 200 chars or less')
+  if (!Array.isArray(request.docIds) || request.docIds.length === 0) errors.push('needDocs.docIds is required')
+  for (const docId of request.docIds || []) {
+    if (seenDocIds.has(docId)) errors.push(`Duplicate needDocs docId: ${docId}`)
     seenDocIds.add(docId)
-    if (!findDocument(example, docId)) errors.push(`toolCall docId not found in documents: ${docId}`)
+    if (!findDocument(example, docId)) errors.push(`needDocs docId not found in documents: ${docId}`)
   }
 }
 
-function validateToolOutput(example, toolCall, errors) {
-  const output = toolOutputForDocuments((toolCall.docIds || []).map((docId) => findDocument(example, docId)).filter(Boolean))
-  if (output.success !== true) {
-    errors.push('toolCall docId must resolve to a tool output document')
+function contentDocsForRequest(example, request, errors) {
+  const docs = (request.docIds || []).map((docId) => findDocument(example, docId)).filter(Boolean)
+  const envelope = docContentEnvelopeForDocuments(docs)
+  if (!envelope.fetchedDocIds.length) {
+    errors.push('needDocs docIds must resolve to fetched document content')
     return []
   }
-  if (!Array.isArray(output.documents) || output.documents.length === 0) {
-    errors.push('toolOutput.documents is required')
-    return []
-  }
-  for (const doc of output.documents) {
-    if (!toolCall.docIds.includes(doc.docId)) errors.push('toolOutput document docId must be included in toolCall.docIds')
-    if (!['note', 'list'].includes(doc.docType)) errors.push('toolOutput document docType must be note or list')
-    if (doc.docType === 'list' && !Array.isArray(doc.docContent)) errors.push('list toolOutput document docContent must be an array')
+
+  for (const doc of Object.values(envelope.docContentById)) {
+    if (!request.docIds.includes(doc.docId)) errors.push('docContentById docId must be included in needDocs.docIds')
+    if (!['note', 'list'].includes(doc.docType)) errors.push('docContentById document docType must be note or list')
+    if (doc.docType === 'list' && !Array.isArray(doc.docContent)) errors.push('list docContentById document docContent must be an array')
     if (doc.docType === 'list' && Array.isArray(doc.docContent)) {
       for (const item of doc.docContent) {
-        if (!hasString(item.itemId)) errors.push('list tool output items must include itemId')
-        if (!hasString(item.itemContent)) errors.push('list tool output items must include itemContent')
-        if (typeof item.itemCompleted !== 'boolean') errors.push('list tool output items must include itemCompleted boolean')
+        if (!hasString(item.itemId)) errors.push('list docContentById items must include itemId')
+        if (!hasString(item.itemContent)) errors.push('list docContentById items must include itemContent')
+        if (typeof item.itemCompleted !== 'boolean') errors.push('list docContentById items must include itemCompleted boolean')
         if ('id' in item || 'content' in item || 'completed' in item) {
-          errors.push('list tool output items must use itemId/itemContent/itemCompleted, not id/content/completed')
+          errors.push('list docContentById items must use itemId/itemContent/itemCompleted, not id/content/completed')
         }
       }
     }
-    if (doc.docType === 'note' && typeof doc.docContent !== 'string') errors.push('note toolOutput document docContent must be a string')
+    if (doc.docType === 'note' && typeof doc.docContent !== 'string') errors.push('note docContentById document docContent must be a string')
   }
-  return output.documents
+
+  return Object.values(envelope.docContentById)
 }
 
 function findToolItem(toolDoc, itemId) {
@@ -206,7 +284,7 @@ function validateModification(action, toolDocsById, errors) {
   const payload = action.actionPayload
   if (!payload?.docId) errors.push('modifyDoc.actionPayload.docId is required')
   const toolDoc = payload?.docId ? toolDocsById.get(payload.docId) : null
-  if (payload?.docId && !toolDoc) errors.push('modifyDoc docId must have a matching get_docs tool call')
+  if (payload?.docId && !toolDoc) errors.push('modifyDoc docId must have matching needDocs content')
   if (!Array.isArray(payload?.mods) || payload.mods.length === 0) {
     errors.push('modifyDoc.mods must be a non-empty array')
     return
@@ -248,13 +326,13 @@ export function validateExample(example) {
   if (!example.final?.actions || !Array.isArray(example.final.actions)) errors.push('final.actions must be an array')
   const actions = Array.isArray(example.final?.actions) ? example.final.actions : []
 
-  const toolCalls = getExampleToolCalls(example)
+  const docRequests = getExampleDocRequests(example)
   const seenDocIds = new Set()
   const toolDocsById = new Map()
 
-  for (const toolCall of toolCalls) {
-    validateToolCall(example, toolCall, errors, seenDocIds)
-    const toolDocs = validateToolOutput(example, toolCall, errors)
+  for (const request of docRequests) {
+    validateDocRequest(example, request, errors, seenDocIds)
+    const toolDocs = contentDocsForRequest(example, request, errors)
     for (const toolDoc of toolDocs) {
       if (toolDoc?.docId) toolDocsById.set(toolDoc.docId, toolDoc)
     }
@@ -264,8 +342,8 @@ export function validateExample(example) {
     if (!action.actionType) errors.push('Action missing actionType')
     if (!action.actionPayload) errors.push(`Action ${action.actionType} missing actionPayload`)
 
-    if (action.actionType === 'modifyDoc' && toolCalls.length === 0) {
-      errors.push('modifyDoc examples must include one get_docs toolCall')
+    if (action.actionType === 'modifyDoc' && docRequests.length === 0) {
+      errors.push('modifyDoc examples must include needDocs')
     }
 
     if (action.actionType === 'createDoc') validateCreatePayload(action.actionPayload, errors)
@@ -303,8 +381,22 @@ export function validateDataset(dataset) {
 }
 
 export function stripEditorOnlyFields(dataset) {
+  const rest = { ...dataset }
+  delete rest.promptTemplate
   return {
-    ...dataset,
-    examples: (dataset.examples || []).map(({ notes, toolOutput, ...example }) => example),
+    ...rest,
+    model: dataset.model || MODEL,
+    examples: (dataset.examples || []).map(({ notes, toolOutput, toolCall, toolCalls, ...example }) => ({
+      ...example,
+      needDocs: example.needDocs ?? (() => {
+        const legacy = Array.isArray(toolCalls) ? toolCalls.filter(Boolean) : (toolCall ? [toolCall] : [])
+        const requests = legacy.map((call) => ({
+          plan: call.plan || defaultNeedDocsPlan(example),
+          docIds: Array.isArray(call.docIds) ? call.docIds : (call.docId ? [call.docId] : []),
+        })).filter((request) => request.docIds.length)
+        if (!requests.length) return null
+        return requests.length === 1 ? requests[0] : requests
+      })(),
+    })),
   }
 }

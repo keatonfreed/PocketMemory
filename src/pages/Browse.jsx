@@ -65,7 +65,7 @@ export default function Browse() {
 
 
     return (
-        <div className="min-h-dvh max-h-dvh flex flex-col pt-[max(48px,env(safe-area-inset-top))] pb-32 overflow-y-auto">
+        <div className="min-h-full flex flex-col pt-[max(48px,env(safe-area-inset-top))] pb-32">
             <h1 className="text-2xl font-bold mb-6 px-6 text-center text-foreground/90">Documents</h1>
 
             <motion.div layout className="flex flex-col gap-2 mb-6 px-4 ">

@@ -39,7 +39,7 @@
         <section class="editor">
           <div class="tabs">
             <button class="tab active" data-tab="example">Example</button>
-            <button class="tab" data-tab="prompt">Prompt</button>
+            <button class="tab" data-tab="contract">Contract</button>
             <button class="tab" data-tab="preview">JSONL Preview</button>
           </div>
 
@@ -66,8 +66,8 @@
                 </select>
               </label>
               <label>
-                Tool call(s) JSON
-                <textarea id="toolCallInput" class="short" spellcheck="false" placeholder="null, one object, or an array of tool calls"></textarea>
+                Need docs JSON
+                <textarea id="needDocsInput" class="short" spellcheck="false" placeholder="null, one object, or an array of needDocs requests"></textarea>
               </label>
             </div>
             <label>
@@ -84,11 +84,25 @@
             </label>
           </div>
 
-          <div id="promptPanel" class="panel">
-            <label>
-              Developer prompt template
-              <textarea id="promptInput" spellcheck="false"></textarea>
-            </label>
+          <div id="contractPanel" class="panel">
+            <div class="contract-grid">
+              <label>
+                Assembled developer prompt
+                <pre id="contractPromptOutput"></pre>
+              </label>
+              <label>
+                Runtime state messages
+                <pre id="contractStateOutput"></pre>
+              </label>
+              <label>
+                Tool definition
+                <pre id="contractToolOutput"></pre>
+              </label>
+              <label>
+                Output schema
+                <pre id="contractSchemaOutput"></pre>
+              </label>
+            </div>
           </div>
 
           <div id="previewPanel" class="panel">

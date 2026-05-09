@@ -43,15 +43,20 @@ if ('scrollRestoration' in history) {
 function MemoryApp() {
     const scrollRef = useRef(null)
 
+    useEffect(() => {
+        document.body.classList.add('app-scroll-locked')
+        return () => document.body.classList.remove('app-scroll-locked')
+    }, [])
+
     return (
         <div className="app-frame h-dvh max-h-dvh bg-background text-foreground relative font-sans antialiased overflow-hidden">
             <div className="bg-noise" />
             <TopScrollOnNavigate scrollRef={scrollRef} />
             <DevAiDebugPanel />
-            <main className="relative z-10 h-full w-full max-w-[500px] mx-auto shadow-2xl bg-background/50 backdrop-blur-3xl flex flex-col overflow-hidden">
+            <main className="relative z-10 h-full min-h-0 w-full max-w-[500px] mx-auto shadow-2xl bg-background/50 backdrop-blur-3xl flex flex-col overflow-hidden">
                 <ErrorBoundary>
                     <FloatingCaptureStatus />
-                    <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar scroll-smooth relative w-full">
+                    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar scroll-smooth relative w-full">
                         <Routes>
                             <Route index element={<Home />} />
                             <Route path="browse" element={<Browse />} />
