@@ -45,3 +45,7 @@ Thumbs.db
 /dist/
 .vercel
 .env*.local
+
+# Private setup staging files and Apple signing keys
+.env*.tmp
+*.p8

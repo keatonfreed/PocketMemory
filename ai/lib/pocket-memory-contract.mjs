@@ -11,4 +11,4 @@ export {
   queryMemoryDeveloperPromptTemplate as developerPromptTemplate,
   queryMemoryGetDocsTool,
   queryMemoryOutputSchema,
-} from '../../api/_queryMemoryContract.js'
+} from './legacy-contract.js'

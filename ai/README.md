@@ -1,4 +1,6 @@
-# PocketMemory AI Dataset
+# PocketMemory legacy AI dataset
+
+This is an offline reference for the previous document-action model. The current app uses `server/agent.js` and does not load these examples.
 
 This folder is a separate development workspace for `queryMemory` fine-tuning data.
 
@@ -11,7 +13,7 @@ The editor starts from `ai/data/examples.seed.mjs` until you save. The first sav
 
 The editor autosaves after edits settle. While changes are pending, the Save button reads `Unsaved - Save now`; if any JSON field is invalid, it turns into `Fix JSON before saving` and blocks save/export until the JSON parses.
 
-The `queryMemory` developer prompt, historical `get_docs` tool shape, and structured output schema are shared from `api/_queryMemoryContract.js`. The editor renders that assembled contract for the selected example, but it does not store or edit a prompt copy in the dataset.
+The `queryMemory` developer prompt, historical `get_docs` tool shape, and structured output schema are shared from `ai/lib/legacy-contract.js`. The editor renders that assembled contract for the selected example, but it does not store or edit a prompt copy in the dataset.
 
 ## Format
 
