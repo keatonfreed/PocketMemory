@@ -6,7 +6,8 @@
   "ios": {
     "contentInset": "never",
     "preferredContentMode": "mobile",
-    "backgroundColor": "#070709"
+    "backgroundColor": "#070709",
+    "zoomEnabled": false
   },
   "plugins": {
     "Keyboard": {

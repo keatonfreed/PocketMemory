@@ -46,3 +46,8 @@ CREATE TABLE IF NOT EXISTS pm_consent (
 CREATE TABLE IF NOT EXISTS pm_apple_credentials (
  user_id text PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE, token text NOT NULL
 );
+
+-- Additive and safe to rerun on an existing account database.
+ALTER TABLE pm_reminders ADD COLUMN IF NOT EXISTS body text NOT NULL DEFAULT '';
+ALTER TABLE pm_reminders ADD COLUMN IF NOT EXISTS repeat text CHECK (repeat IN ('daily','weekly'));
+ALTER TABLE pm_reminders ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'UTC';

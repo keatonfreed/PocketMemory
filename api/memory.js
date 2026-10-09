@@ -1,3 +1,5 @@
+import { eventStream } from '../server/stream.js'
+import { publicError, safeDiagnostics } from '../server/errors.js'
 import { z } from 'zod'
 import { endpoint, body, method, user } from '../server/http.js'
 import { editReminder } from '../server/reminders.js'
@@ -13,7 +15,21 @@ export default endpoint(async (req, res) => {
   }
   method(req, 'POST')
   const input = body(req)
-  if (input.action === 'capture') return res.json({ entry: await capture(account.id, input.data) })
+  if (input.action === 'capture') {
+    if (!req.headers.accept?.includes('text/event-stream')) return res.json({ entry: await capture(account.id, input.data) })
+    const stream = eventStream(res)
+    stream.emit({ type: 'connected', requestId: req.requestId })
+    try {
+      const entry = await capture(account.id, input.data, { onEvent: stream.emit })
+      stream.emit({ type: 'complete', entry })
+    } catch (error) {
+      error.requestId = req.requestId
+      const failure = publicError(error)
+      console.error('capture_failed', { requestId: req.requestId, status: failure.status, code: failure.code, ...safeDiagnostics(error) })
+      stream.emit({ type: 'error', ...failure })
+    } finally { stream.end() }
+    return
+  }
   if (input.action === 'edit') return res.json({ knowledge: await edit(account.id, input.data) })
   if (input.action === 'editReminder') return res.json({ reminder: await editReminder(account.id, input.data) })
   if (input.action === 'completeReminder') {

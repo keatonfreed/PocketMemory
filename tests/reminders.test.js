@@ -35,3 +35,27 @@ test('offline reminder edits move a past reminder into its new notification sche
   assert.equal(plan[0].schedule.at.toISOString(), dueAt)
   assert.equal(state.reminders[id].title, 'Old')
 })
+
+test('daily reminders keep a 6 AM wall-clock schedule across DST and native repeats persist', () => {
+  const reminder = { id: 'daily', title: 'Morning stretch', body: 'Take five minutes to stretch.', dueAt: '2026-10-31T13:00:00.000Z', repeat: 'daily', timezone: 'America/Los_Angeles' }
+  const now = new Date('2026-11-01T12:00:00.000Z').getTime()
+  const plan = notificationPlan({ daily: reminder }, now)
+  assert.equal(plan.length, 1)
+  assert.equal(plan[0].title, 'Morning stretch')
+  assert.equal(plan[0].body, 'Take five minutes to stretch.')
+  assert.deepEqual(plan[0].schedule, { on: { hour: 6, minute: 0, second: 0 }, repeats: true })
+})
+test('weekly reminders keep the weekday and skip missed occurrences', async () => {
+  const { nextReminderAt } = await import('../shared/reminders.js')
+  const reminder = { id: 'weekly', title: 'Check in', body: 'Call Sam.', dueAt: '2026-10-05T13:00:00.000Z', repeat: 'weekly', timezone: 'America/Los_Angeles' }
+  const now = new Date('2026-11-01T18:00:00.000Z').getTime()
+  assert.equal(nextReminderAt(reminder, now), '2026-11-02T14:00:00.000Z')
+  assert.deepEqual(notificationPlan({ weekly: reminder }, now)[0].schedule.on, { weekday: 2, hour: 6, minute: 0, second: 0 })
+  assert.equal(notificationPlan({ weekly: { ...reminder, completed: true } }, now).length, 0)
+})
+test('daily next occurrence moves forward after delivery without changing the seed', async () => {
+  const { nextReminderAt } = await import('../shared/reminders.js')
+  const reminder = { dueAt: '2026-10-08T13:00:00.000Z', repeat: 'daily', timezone: 'America/Los_Angeles' }
+  assert.equal(nextReminderAt(reminder, new Date('2026-10-08T14:00:00Z').getTime()), '2026-10-09T13:00:00.000Z')
+  assert.equal(reminder.dueAt, '2026-10-08T13:00:00.000Z')
+})

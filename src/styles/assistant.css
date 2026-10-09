@@ -1,0 +1,17 @@
+/* Capture receipts stay with the user's message; only replies have typing UI. */
+.message-receipt { display: inline-flex; align-items: center; gap: 4px; align-self: flex-end; margin: -2px 6px 0 0; color: var(--text-muted, #8a91a0); font-size: 11px; }
+.conversation-response:empty { display: none; }
+.typing-dots { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 7px 0; }
+.typing-dots i { display: block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .55; animation: assistant-dot 1.2s ease-in-out infinite; }
+.typing-dots i:nth-child(2) { animation-delay: .15s; }
+.typing-dots i:nth-child(3) { animation-delay: .3s; }
+.assistant-progress { display: block; margin-top: 6px; color: var(--text-muted, #8a91a0); font-size: 12px; }
+.entry-error-details { display: block; margin: 4px 0 8px; overflow-wrap: anywhere; font-size: 11px; opacity: .7; }
+.native-app { touch-action: manipulation; }
+.native-app input, .native-app textarea, .native-app select { font-size: max(16px, 1em); }
+.reminder-body-field, .reminder-repeat-field { display: grid; gap: 8px; margin: 18px 0; font-size: 13px; }
+.reminder-body-field textarea, .reminder-repeat-field select { width: 100%; padding: 12px; color: inherit; background: rgba(128,128,128,.06); border: 1px solid rgba(128,128,128,.2); border-radius: 12px; font: inherit; }
+.reminder-body-field textarea { resize: vertical; min-height: 80px; }
+.reminder-details .reminder-body { display: block; margin-top: 4px; color: var(--text-muted, #8a91a0); font-size: 13px; }
+@keyframes assistant-dot { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .typing-dots i { animation: none; } }

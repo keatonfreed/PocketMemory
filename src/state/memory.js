@@ -6,7 +6,7 @@ import { reconcileNotifications, clearNotifications } from '../lib/notifications
 import { effectiveReminders } from '../../shared/reminders'
 import { SocialLogin } from '@capgo/capacitor-social-login'
 let writes = Promise.resolve(), syncing = false, authenticating = false, epoch = 0, retryTimer, syncFailures = 0
-export const useMemory = create(() => ({ ready: false, signingIn: false, preparingSignIn: false, user: null, data: emptyState(), syncing: false, error: null, online: navigator.onLine, needsSignIn: false }))
+export const useMemory = create(() => ({ ready: false, signingIn: false, preparingSignIn: false, user: null, data: emptyState(), syncing: false, error: null, online: navigator.onLine, needsSignIn: false, sessionVersion: 0, turns: {} }))
 function update(fn) {
   const generation = epoch
   const job = writes.then(async () => {
@@ -66,7 +66,7 @@ async function authenticate(expectedUserId) {
   await writeSession(session)
   setToken(session.token)
   const data = await readState(session.user.id)
-  useMemory.setState({ user: session.user, data: data || emptyState(), needsSignIn: false, error: null })
+  useMemory.setState(state => ({ user: session.user, data: data || emptyState(), needsSignIn: false, error: null, sessionVersion: state.sessionVersion + 1, turns: {} }))
 }
 export async function signOut({ deleted = false } = {}) {
   if (syncing) throw new Error('Wait for syncing to finish before signing out.')
@@ -79,7 +79,7 @@ export async function signOut({ deleted = false } = {}) {
   await removeState(current.user.id)
   await removeSession()
   setToken(null)
-  useMemory.setState({ user: null, data: emptyState(), error: null, needsSignIn: false })
+  useMemory.setState({ user: null, data: emptyState(), error: null, needsSignIn: false, turns: {} })
 }
 export async function deleteAccount() {
   if (syncing) throw new Error('Wait for syncing to finish before deleting your account.')
@@ -146,9 +146,22 @@ export async function sync() {
     let next
     while ((next = useMemory.getState().data.outbox.find(o => !o.error && (o.action !== 'capture' || account.consent)))) {
       try {
-        await request('/api/memory', { method: 'POST', data: { action: next.action, data: next.data } })
+        if (next.action === 'capture') useMemory.setState(state => ({ turns: { ...state.turns, [next.id]: {} } }))
+        const result = await request('/api/memory', { method: 'POST', data: { action: next.action, data: next.data }, ...(next.action === 'capture' ? { onEvent: event => {
+          if (generation !== epoch) return
+          useMemory.setState(state => {
+            const turn = state.turns[next.id] || {}
+            const value = event.type === 'decision' ? { ...turn, reply: event.reply, actions: event.actions }
+              : event.type === 'reply' ? { ...turn, text: event.text, progress: null }
+              : event.type === 'progress' ? { ...turn, progress: event.text } : turn
+            return { turns: { ...state.turns, [next.id]: value } }
+          })
+        } } : {}) })
+        if (generation !== epoch) return
+        if (result.entry) await update(data => ({ ...data, entries: { ...data.entries, [result.entry.id]: result.entry } }))
         // Do not discard a request until its committed state has been fetched locally.
         await pull()
+        useMemory.setState(state => { const turns = { ...state.turns }; delete turns[next.id]; return { turns } })
         await update(data => {
           const drafts = { ...data.drafts }
           if (next.action === 'edit' && drafts[next.data.id]?.content === next.data.content && drafts[next.data.id]?.title === next.data.title) delete drafts[next.data.id]
@@ -156,15 +169,16 @@ export async function sync() {
           return { ...data, drafts, outbox: data.outbox.filter(o => o.id !== next.id) }
         })
       } catch (error) {
+        useMemory.setState(state => { const turns = { ...state.turns }; delete turns[next.id]; return { turns } })
         if (error.status === 401) throw error
         if (!useMemory.getState().online) break
-        const transient = !error.status || error.status === 429 || (error.status === 409 && !error.conflict)
+        const transient = !['AI_SETUP_REQUIRED', 'DATABASE_SETUP_REQUIRED'].includes(error.code) && (!error.status || error.status === 429 || error.status === 503 || (error.status === 409 && !error.conflict))
         if (transient && (next.attempts || 0) < 3) {
           await update(data => ({ ...data, outbox: data.outbox.map(o => o.id === next.id ? { ...o, attempts: (o.attempts || 0) + 1 } : o) }))
           retryTimer = setTimeout(() => void sync(), 2000 * 2 ** (next.attempts || 0))
           break
         }
-        await update(data => ({ ...data, outbox: data.outbox.map(o => o.id === next.id ? { ...o, error: error.message, conflict: Boolean(error.conflict) } : o) }))
+        await update(data => ({ ...data, outbox: data.outbox.map(o => o.id === next.id ? { ...o, error: error.message, errorCode: error.code, requestId: error.requestId, stage: error.stage, conflict: Boolean(error.conflict) } : o) }))
         await pull()
       }
     }

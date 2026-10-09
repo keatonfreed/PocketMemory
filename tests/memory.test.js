@@ -85,3 +85,37 @@ test('a bad later operation rolls back an earlier memory creation', async () => 
     assert.equal((await database.query('SELECT status FROM pm_entries')).rows[0].status, 'failed')
   } finally { await database.close() }
 })
+
+test('AI reminder creation, updates and deletion persist atomically and replay once', async () => {
+  const { database, transact } = await setup()
+  try {
+    const input = message('Remind me to stretch every day at 6am')
+    const item = { action: 'create', targetId: null, title: 'Stretch', body: 'Take five minutes to stretch.', dueAt: '2028-05-01T13:00:00.000Z', repeat: 'daily', timezone: 'America/Los_Angeles', evidence: input.text }
+    const agent = async () => ({ plan: { ...result([]).plan, reminders: [item] }, webSources: [] })
+    await capture('u1', input, { transact, agent })
+    await capture('u1', input, { transact, agent })
+    const { rows: [record] } = await database.query('SELECT * FROM pm_reminders')
+    assert.equal(record.repeat, 'daily')
+    assert.equal(record.body, item.body)
+    assert.equal((await database.query('SELECT count(*) FROM pm_reminders')).rows[0].count, 1)
+    await capture('u1', message('Make it weekly'), { transact, agent: async () => ({ plan: { ...result([]).plan, reminders: [{ ...item, action: 'update', targetId: record.id, repeat: 'weekly' }] }, webSources: [] }) })
+    assert.equal((await database.query('SELECT repeat FROM pm_reminders')).rows[0].repeat, 'weekly')
+    await assert.rejects(capture('u2', message('Delete that reminder'), { transact, agent: async () => ({ plan: { ...result([]).plan, reminders: [{ ...item, action: 'delete', targetId: record.id }] }, webSources: [] }) }), /changed before deletion/)
+    await capture('u1', message('Delete that reminder'), { transact, agent: async () => ({ plan: { ...result([]).plan, reminders: [{ ...item, action: 'delete', targetId: record.id }] }, webSources: [] }) })
+    assert.equal((await database.query('SELECT count(*) FROM pm_reminders')).rows[0].count, 0)
+    const changes = (await database.query("SELECT deleted FROM pm_changes WHERE type='reminder' AND record_id=$1", [record.id])).rows
+    assert.deepEqual(changes, [{ deleted: true }])
+  } finally { await database.close() }
+})
+test('AI memory deletion removes stale sync payloads and retains original messages', async () => {
+  const { database, transact } = await setup()
+  try {
+    await capture('u1', message('I prefer tea'), { transact, agent: async () => result([create]) })
+    const { rows: [record] } = await database.query('SELECT * FROM pm_knowledge')
+    await capture('u1', message('Delete my tea preference'), { transact, agent: async () => result([{ ...create, action: 'delete', targetId: record.id }]) })
+    assert.equal((await database.query('SELECT count(*) FROM pm_knowledge')).rows[0].count, 0)
+    assert.equal((await database.query('SELECT count(*) FROM pm_entries')).rows[0].count, 2)
+    assert.equal((await database.query('SELECT count(*) FROM pm_revisions')).rows[0].count, 0)
+    assert.deepEqual((await database.query("SELECT deleted FROM pm_changes WHERE type='knowledge'", [])).rows, [{ deleted: true }])
+  } finally { await database.close() }
+})

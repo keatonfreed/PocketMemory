@@ -14,19 +14,33 @@ export async function search(client, userId, type, args) {
   return rows.map(isKnowledge ? knowledge : entry)
 }
 export function createRetriever(client, userId) {
-  const known = new Map(), evidence = new Set(), fullyRead = new Set()
+  const known = new Map(), evidence = new Set(), fullyRead = new Set(), knownReminders = new Map()
   function remember(type, records) {
-    records.forEach(row => { evidence.add(`${type}:${row.id}`); if (type === 'knowledge') known.set(row.id, row) })
+    records.forEach(row => { evidence.add(`${type}:${row.id}`); if (type === 'knowledge') known.set(row.id, row); if (type === 'reminder') knownReminders.set(row.id, row) })
     return records
   }
   return {
-    known, evidence, fullyRead, remember,
-    async context() {
-      // Bound prompt size; search/read tools still expose everything beyond this snapshot.
-      const { rows } = await client.query('SELECT * FROM pm_knowledge WHERE user_id=$1 AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > now()) ORDER BY updated_at DESC, id DESC LIMIT 201', [userId])
+    known, knownReminders, evidence, fullyRead, remember,
+    async context(capture) {
+      // Preserve exact recent messages and replies; only older history is previewed.
+      const { rows: historyRows } = await client.query('SELECT * FROM pm_entries WHERE user_id=$1 AND id<>$2 ORDER BY created_at DESC, id DESC LIMIT 301', [userId, capture.id])
+      let historyBudget = 120000
+      const history = []
+      for (const [index, row] of historyRows.slice(0, 300).entries()) {
+        const original = entry(row)
+        const record = index < 20 ? original : previewRecord(original)
+        const compact = { id: record.id, text: record.text, reply: record.reply, createdAt: record.createdAt, timezone: record.timezone, ...(record.truncated ? { truncated: true } : {}) }
+        const size = JSON.stringify(compact).length
+        if (size > historyBudget && history.length) break
+        historyBudget -= size
+        history.push(compact)
+      }
+      remember('entry', history)
+      history.reverse()
+      const { rows } = await client.query('SELECT * FROM pm_knowledge WHERE user_id=$1 AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > now()) ORDER BY updated_at DESC, id DESC LIMIT 301', [userId])
       let budget = 100000
       const memories = []
-      for (const row of rows.slice(0, 200)) {
+      for (const row of rows.slice(0, 300)) {
         const record = previewRecord(knowledge(row))
         const size = JSON.stringify(record).length
         if (size > budget) break
@@ -34,7 +48,9 @@ export function createRetriever(client, userId) {
         memories.push(record)
       }
       remember('knowledge', memories)
-      return { memories, memoriesTruncated: memories.length < rows.length, reminders: await this.execute('list_reminders', {}) }
+      const { rows: reminderRows } = await client.query('SELECT * FROM pm_reminders WHERE user_id=$1 ORDER BY completed, due_at LIMIT 201', [userId])
+      const reminders = remember('reminder', reminderRows.slice(0, 200).map(reminder))
+      return { history, historyTruncated: history.length < historyRows.length, memories, memoriesTruncated: memories.length < rows.length, reminders, remindersTruncated: reminders.length < reminderRows.length }
     },
     async execute(name, args) {
       if (name === 'search_history' || name === 'search_knowledge') {
@@ -42,10 +58,10 @@ export function createRetriever(client, userId) {
         return remember(type, await search(client, userId, type, args)).map(previewRecord)
       }
       if (name === 'read_record') {
-        const input = z.object({ type: z.enum(['entry', 'knowledge']), id: z.string().uuid() }).strict().parse(args)
-        const { rows } = await client.query(`SELECT * FROM ${input.type === 'entry' ? 'pm_entries' : 'pm_knowledge'} WHERE user_id=$1 AND id=$2`, [userId, input.id])
-        const records = remember(input.type, rows.map(input.type === 'entry' ? entry : knowledge))
-        if (records.length && input.type === 'knowledge') fullyRead.add(input.id)
+        const input = z.object({ type: z.enum(['entry', 'knowledge', 'reminder']), id: z.string().uuid() }).strict().parse(args)
+        const { rows } = await client.query(`SELECT * FROM ${{ entry: 'pm_entries', knowledge: 'pm_knowledge', reminder: 'pm_reminders' }[input.type]} WHERE user_id=$1 AND id=$2`, [userId, input.id])
+        const records = remember(input.type, rows.map({ entry, knowledge, reminder }[input.type]))
+        if (records.length && input.type !== 'entry') fullyRead.add(`${input.type}:${input.id}`)
         if (input.type === 'knowledge' && records.length) {
           const history = await client.query('SELECT snapshot, reason, source_id AS "sourceId", created_at AS "createdAt" FROM pm_revisions WHERE user_id=$1 AND knowledge_id=$2 ORDER BY version DESC LIMIT 30', [userId, input.id])
           return { records, revisions: history.rows }
@@ -53,9 +69,9 @@ export function createRetriever(client, userId) {
         return { records }
       }
       if (name === 'list_reminders') {
-        z.object({}).strict().parse(args)
-        const { rows } = await client.query('SELECT * FROM pm_reminders WHERE user_id=$1 AND completed=false ORDER BY due_at LIMIT 50', [userId])
-        return rows.map(reminder)
+        const input = z.object({ before: z.string().datetime({ offset: true }).nullable().optional() }).strict().parse(args)
+        const { rows } = await client.query('SELECT * FROM pm_reminders WHERE user_id=$1 AND ($2::timestamptz IS NULL OR created_at < $2) ORDER BY created_at DESC LIMIT 100', [userId, input.before || null])
+        return remember('reminder', rows.map(reminder))
       }
       throw new Error('Unknown tool')
     },

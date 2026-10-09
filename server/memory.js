@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { db, transaction, publish } from './db.js'
 import { entry, knowledge, reminder } from './records.js'
+import { publicError } from './errors.js'
 import { runAgent } from './agent.js'
 import { captureSchema, editSchema } from '../shared/contracts.js'
 
@@ -8,7 +9,7 @@ async function saveRevision(client, userId, record, reason) {
   await client.query('INSERT INTO pm_revisions(user_id,knowledge_id,version,snapshot,source_id,reason) VALUES ($1,$2,$3,$4,$5,$6)', [userId, record.id, record.version, record, record.sourceId, reason])
   await publish(client, userId, 'knowledge', record)
 }
-export async function capture(userId, raw, { agent = runAgent, transact = transaction } = {}) {
+export async function capture(userId, raw, { agent = runAgent, transact = transaction, onEvent } = {}) {
   const input = captureSchema.parse(raw)
   // Commit the original before calling any AI provider. Retries use the same ID.
   await transact(userId, async client => {
@@ -23,14 +24,24 @@ export async function capture(userId, raw, { agent = runAgent, transact = transa
     const { rows } = await client.query('INSERT INTO pm_entries(id,user_id,text,created_at,timezone,research) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [input.id, userId, input.text, input.createdAt, input.timezone, input.research])
     await publish(client, userId, 'entry', entry(rows[0]))
   })
+  onEvent?.({ type: 'saved' })
   try {
     return await transact(userId, async client => {
       const current = await client.query('SELECT * FROM pm_entries WHERE id=$1 AND user_id=$2 FOR UPDATE', [input.id, userId])
       if (current.rows[0].status === 'done') return entry(current.rows[0])
       const consent = await client.query('SELECT ai_enabled FROM pm_consent WHERE user_id=$1', [userId])
       if (!consent.rows[0]?.ai_enabled) throw Object.assign(new Error('Enable AI processing in Settings to process this entry.'), { status: 403 })
-      const { plan, webSources } = await agent(client, userId, input)
+      const { plan, webSources } = await agent(client, userId, input, { onEvent })
+      if (plan.changes.length || plan.reminders.length) onEvent?.({ type: 'progress', text: 'Saving changes…' })
       for (const change of plan.changes) {
+        if (change.action === 'delete') {
+          const { rows } = await client.query('DELETE FROM pm_knowledge WHERE id=$1 AND user_id=$2 RETURNING id', [change.targetId, userId])
+          if (!rows.length) throw new Error('Memory changed before deletion')
+          await client.query("DELETE FROM pm_operations WHERE user_id=$1 AND result->>'id'=$2", [userId, change.targetId])
+          await client.query("DELETE FROM pm_changes WHERE user_id=$1 AND type='knowledge' AND record_id=$2", [userId, change.targetId])
+          await publish(client, userId, 'knowledge', { id: change.targetId }, true)
+          continue
+        }
         let rows
         if (change.action === 'create') {
           // Exact semantic-normalized duplicates are also checked against records outside retrieved context.
@@ -44,7 +55,18 @@ export async function capture(userId, raw, { agent = runAgent, transact = transa
         await saveRevision(client, userId, knowledge(rows[0]), change.reason)
       }
       for (const item of plan.reminders) {
-        const { rows } = await client.query('INSERT INTO pm_reminders(id,user_id,source_id,title,due_at) VALUES ($1,$2,$3,$4,$5) RETURNING *', [randomUUID(), userId, input.id, item.title, item.dueAt])
+        if (item.action === 'delete') {
+          const { rows } = await client.query('DELETE FROM pm_reminders WHERE id=$1 AND user_id=$2 RETURNING id', [item.targetId, userId])
+          if (!rows.length) throw new Error('Reminder changed before deletion')
+          await client.query("DELETE FROM pm_changes WHERE user_id=$1 AND type='reminder' AND record_id=$2", [userId, item.targetId])
+          await publish(client, userId, 'reminder', { id: item.targetId }, true)
+          continue
+        }
+        const fields = [item.title, item.dueAt, item.body || '', item.repeat || null, item.timezone || input.timezone]
+        const { rows } = item.action === 'update'
+          ? await client.query('UPDATE pm_reminders SET title=$3,due_at=$4,body=$5,repeat=$6,timezone=$7,completed=false WHERE id=$1 AND user_id=$2 RETURNING *', [item.targetId, userId, ...fields])
+          : await client.query('INSERT INTO pm_reminders(id,user_id,source_id,title,due_at,body,repeat,timezone) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [randomUUID(), userId, input.id, ...fields])
+        if (!rows.length) throw new Error('Reminder changed before update')
         await publish(client, userId, 'reminder', reminder(rows[0]))
       }
       const { rows } = await client.query("UPDATE pm_entries SET status='done',reply=$3,sources=$4,web_sources=$5,error=NULL WHERE id=$1 AND user_id=$2 RETURNING *", [input.id, userId, plan.reply, JSON.stringify(plan.sources), JSON.stringify(webSources)])
@@ -55,7 +77,7 @@ export async function capture(userId, raw, { agent = runAgent, transact = transa
   } catch (error) {
     // A concurrent request owns the lock; don't overwrite its outcome with a failure.
     if (error.status !== 409) await transact(userId, async client => {
-      const { rows } = await client.query("UPDATE pm_entries SET status='failed',error=$3 WHERE id=$1 AND user_id=$2 AND status!='done' RETURNING *", [input.id, userId, error.status && error.status < 600 ? error.message : 'Processing did not finish. Please retry.'])
+      const { rows } = await client.query("UPDATE pm_entries SET status='failed',error=$3 WHERE id=$1 AND user_id=$2 AND status!='done' RETURNING *", [input.id, userId, publicError(error, 'Processing did not finish. Your entry is saved; please retry.').error])
       if (rows.length) await publish(client, userId, 'entry', entry(rows[0]))
     }).catch(() => {})
     throw error

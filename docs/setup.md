@@ -187,3 +187,15 @@ Still missing at this check: `BETTER_AUTH_SECRET`, `APPLE_TEAM_ID`, `APPLE_KEY_I
 ### If Apple sign-in reports incomplete server setup
 
 The production sign-in logs showed missing Better Auth tables (`user`, `session`, `account`, `verification`, `rateLimit`). Apple configuration alone does not create database tables. If you already cleared the old database, run `npm run db:migrate` once to create missing auth/app tables without deleting data. It uses the local `DATABASE_URL`; confirm it targets the same database as Vercel Production. If you still want the deliberate clean start, use the confirmed reset command in step 6 instead. These commands must never run automatically in response to a sign-in request.
+
+### Assistant routing, streaming and recurring reminders
+
+Before deploying this version, run `npm run db:migrate` using the intended backend database configuration. The migration is additive: reminder notification body, daily/weekly repeat and timezone columns. Existing reminders remain one-time. Deploy the backend, then run `npm run ios:sync` and rebuild/install the app. Capture streaming uses SSE over the existing `/api/memory` Vercel Node Function; no WebSocket server or new credentials are required. Old clients can keep requesting JSON responses. Native recurring notifications require notification permission and use device local calendar time. Tests use mocked providers and isolated local databases; they do not prove production streaming or signed-device delivery.
+
+### Updating an existing installation
+
+Run `npm run db:migrate` with the intended database configuration to add missing reminder body, repeat, and timezone fields. The migration is additive and safe to rerun; it does not replace existing records. Do not use `db:reset` for this update.
+
+Deploy the updated backend to enable streamed responses, then run `npm run ios:sync` and rebuild from Xcode for the new interface. Updating only the phone cannot enable streaming on an older backend.
+
+In Xcode’s debug console, search for `[Pocket Memory] server_error`. It includes the error code, stage, request ID, and structural diagnostics. Match that request ID in Vercel runtime logs (`capture_failed` or `request_failed`). Diagnostics exclude message content and credentials. `streaming_unavailable` indicates the server returned an older JSON response instead of a stream.

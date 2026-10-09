@@ -1,4 +1,5 @@
-import { publicError } from './errors.js'
+import { randomUUID } from 'node:crypto'
+import { publicError, safeDiagnostics } from './errors.js'
 import { auth } from './auth.js'
 export function headers(req) {
   const result = new Headers()
@@ -13,8 +14,8 @@ export function cors(req, res) {
   if (origin && !allowed.has(origin)) { res.status(403).json({ error: 'Origin is not allowed' }); return false }
   if (origin) res.setHeader('Access-Control-Allow-Origin', origin)
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  res.setHeader('Access-Control-Expose-Headers', 'set-auth-token')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept')
+  res.setHeader('Access-Control-Expose-Headers', 'set-auth-token, X-Pocket-Memory-Request-Id, X-Pocket-Memory-Version')
   if (req.method === 'OPTIONS') { res.status(204).end(); return false }
   return true
 }
@@ -29,11 +30,15 @@ export async function user(req) {
   return session.user
 }
 export const endpoint = (fn, { fallback } = {}) => async (req, res) => {
+  req.requestId = randomUUID()
+  res.setHeader('X-Pocket-Memory-Request-Id', req.requestId)
+  res.setHeader('X-Pocket-Memory-Version', 'assistant-v2')
   if (!cors(req, res)) return
   try { await fn(req, res) } catch (e) {
+    e.requestId = req.requestId
     const failure = publicError(e, fallback)
     // Log diagnostics, never user content, credentials, or provider bodies.
-    console.error('request_failed', { name: e.name, status: failure.status, code: failure.code })
+    console.error('request_failed', { requestId: req.requestId, status: failure.status, code: failure.code, ...safeDiagnostics(e) })
     res.status(failure.status).json(failure)
   }
 }

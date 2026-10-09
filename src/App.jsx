@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { shallow } from 'zustand/shallow'
 import { Brain, UserRound, ArrowLeft, Plus } from 'lucide-react'
 import { useMemory, initialize, signIn, prepareReminderDraft, prepareMemoryDraft } from './state/memory'
 import { startLifecycle } from './lib/lifecycle'
@@ -18,10 +19,11 @@ import Navigation from './components/app/Navigation'
 import Website from './pages/site/Website'
 import Screen from './components/app/Screen'
 import GettingReady from './components/app/GettingReady'
+import './styles/assistant.css'
 import { softHaptic } from './lib/haptics'
 
 function Application() {
-  const { ready, user, data, error, syncing, needsSignIn, signingIn, preparingSignIn } = useMemory()
+  const { ready, user, data, error, syncing, needsSignIn, signingIn, preparingSignIn, sessionVersion } = useMemory(s => ({ ready: s.ready, user: s.user, data: s.data, error: s.error, syncing: s.syncing, needsSignIn: s.needsSignIn, signingIn: s.signingIn, preparingSignIn: s.preparingSignIn, sessionVersion: s.sessionVersion }), shallow)
   const [tab, setTab] = useState('home'), [detail, setDetail] = useState(null), [policy, setPolicy] = useState(location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : null)
   const previousTab = useRef('home'), backSwipe = useRef(null), reminderEditor = useRef(null), memoryEditor = useRef(null), frame = useRef(null)
   const [accountPage, setAccountPage] = useState(null), [focusCapture, setFocusCapture] = useState(false)
@@ -32,6 +34,11 @@ function Application() {
     startLifecycle(id => { setTab('home'); setDetail(id ? { type: 'entry', id } : null) }).then(cleanup => { if (cancelled) cleanup(); else stop = cleanup }).catch(e => useMemory.setState({ error: e.message }))
     return () => { cancelled = true; stop?.(); document.body.classList.remove('native-app') }
   }, [])
+  useEffect(() => {
+    if (!sessionVersion) return
+    setTab('home'); setDetail(null); setAccountPage(null); setPolicy(null); setFocusCapture(false)
+    previousTab.current = 'home'
+  }, [sessionVersion])
   const routeKey = detail ? `${detail.type}:${detail.id}` : tab === 'settings' ? `account:${accountPage || 'home'}` : tab
   async function leaveReminder(action) {
     if (detail?.type === 'reminder' && reminderEditor.current && !await reminderEditor.current.save()) return
@@ -45,7 +52,7 @@ function Application() {
   }
   function goHome() {
     void leaveReminder(() => {
-      if (tab === 'home' && !detail) frame.current?.querySelector('.app-scroll:not([aria-hidden="true"])')?.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
+      if (tab === 'home' && !detail) frame.current?.querySelector('#capture-thought')?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
       else { setTab('home'); setDetail(null) }
     })
   }

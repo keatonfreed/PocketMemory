@@ -23,7 +23,7 @@ test('rejects double updates, fabricated citations, and reminders in the past', 
   const update = { ...change, action: 'update', targetId: id }
   assert.throws(() => validatePlan({ ...base(), changes: [update, update] }, { ...context(), known: [{ id, content: 'coffee' }] }), /Multiple/)
   assert.throws(() => validatePlan({ ...base(), sources: [{ type: 'entry', id }] }, context()), /unseen/)
-  assert.throws(() => validatePlan({ ...base(), reminders: [{ title: 'Call', dueAt: '2026-10-06T10:00:00Z' }] }, context()), /future/)
+  assert.throws(() => validatePlan({ ...base(), reminders: [{ action: 'create', targetId: null, title: 'Call', body: '', repeat: null, timezone: 'UTC', evidence: 'I prefer tea', dueAt: '2026-10-06T10:00:00Z' }] }, context()), /future/)
 })
 test('sync handles deletion and replay without losing offline drafts or requests', () => {
   const state = { ...emptyState(), drafts: { [id]: 'my edit' }, outbox: [{ id }] }
@@ -53,4 +53,11 @@ test('reminder schedule excludes completed/past items and respects iOS limit', a
   assert.equal(schedule[0].extra.reminderId, '2')
   assert.equal(new Set(schedule.map(r => r.id)).size, 60)
   assert.equal(notificationPlan(records, now + 100 * 60000).length, 0)
+})
+
+test('validates evidence and known targets for reminder edits and deletion', () => {
+  const reminder = { action: 'update', targetId: id, title: 'Call', body: 'Call Sam', dueAt: '2026-10-07T17:00:00Z', repeat: 'daily', timezone: 'America/Los_Angeles', evidence: 'I prefer tea' }
+  assert.throws(() => validatePlan({ ...base(), reminders: [reminder] }, context()), /Unknown reminder/)
+  assert.throws(() => validatePlan({ ...base(), reminders: [{ ...reminder, evidence: 'invented' }] }, { ...context(), knownReminders: [{ id }] }), /Reminder evidence/)
+  assert.equal(validatePlan({ ...base(), reminders: [reminder] }, { ...context(), knownReminders: [{ id }] }).reminders[0].repeat, 'daily')
 })
