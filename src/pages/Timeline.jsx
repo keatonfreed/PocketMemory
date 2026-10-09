@@ -15,7 +15,7 @@ export function Entry({ entry, onMemory, onEntry }) {
   const pending = Boolean(operation && !operation.error && entry.status !== 'done')
   const failed = operation?.error || entry.status === 'failed'
   const memories = Object.values(data.knowledge).filter(item => item.sourceId === entry.id)
-  const sources = [...memories.map(item => ({ type: 'knowledge', id: item.id })), ...(entry.sources || [])]
+  const sources = [...(entry.sources || []), ...memories.map(item => ({ type: 'knowledge', id: item.id }))]
     .filter((source, index, all) => all.findIndex(other => other.type === source.type && other.id === source.id) === index)
   // The quiet receipt is outside the user bubble, and never accompanies a reply.
   const reply = entry.reply?.trim()
@@ -25,7 +25,7 @@ export function Entry({ entry, onMemory, onEntry }) {
     <motion.div layout={reduced ? false : 'position'} transition={transition} className="conversation-response">
       {pending ? (turn?.reply ? <div className="assistant-in-progress">{turn.text ? <p className="conversation-answer">{turn.text}</p> : <span className="typing-dots" role="status" aria-label="Preparing a reply"><i /><i /><i /></span>}{turn.progress && <span className="assistant-progress" role="status">{turn.progress}</span>}</div> : null) : failed ? <div className="entry-error"><p>{operation?.error || entry.error || 'Couldn’t finish this entry.'}</p>{operation?.errorCode && <small className="entry-error-details">{operation.errorCode}{operation.stage ? ` · ${operation.stage}` : ''}{operation.requestId ? ` · Request ${operation.requestId}` : ''}</small>}<AsyncButton className="text-button" onClick={() => retry(entry.id)}><RotateCw size={14} /> Retry</AsyncButton></div> : <>
         {reply ? <p className="conversation-answer">{entry.reply}</p> : null}
-        {!!sources.length && <div className="sources">{sources.map(source => <button key={`${source.type}-${source.id}`} onClick={() => source.type === 'knowledge' ? onMemory(source.id) : onEntry(source.id)}><FileText size={14} />{source.type === 'knowledge' ? data.knowledge[source.id]?.title || 'Memory unavailable' : 'Related entry'}</button>)}</div>}
+        {!!sources.length && <div className="sources">{sources.map(source => <button key={`${source.type}-${source.id}`} onClick={() => source.type === 'knowledge' ? onMemory(source.id) : onEntry(source.id)}><FileText size={14} />{source.action && <small className="source-action">{source.action === 'update' ? 'Edited:' : 'Created:'}</small>}<span className="source-title">{source.type === 'knowledge' ? data.knowledge[source.id]?.title || source.title || 'Memory unavailable' : 'Related entry'}</span></button>)}</div>}
         {!!entry.webSources?.length && <div className="sources">{entry.webSources.map(source => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}</a>)}</div>}
       </>}
     </motion.div>

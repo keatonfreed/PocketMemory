@@ -148,7 +148,7 @@ test('streamed tool and repair continuations exclude SDK parsing fields', async 
     return { async *[Symbol.asyncIterator]() {}, finalResponse: async () => response }
   } } }
   assert.equal((await runAgent(client, user, capture, { ai, classifier, onEvent: e => events.push(e) })).plan.reply, plan.reply)
-  assert.equal(calls, 3)
+  assert.equal(calls, 4)
 })
 test('unsupported provider parameters keep actionable diagnostics and avoid setup misclassification', async () => {
   const ai = { responses: { create: async () => { throw Object.assign(new Error('Unsupported field'), { status: 400, code: 'unknown_parameter', param: 'input[3].parsed_arguments' }) } } }
@@ -167,11 +167,11 @@ test('streaming completion validates content when SDK omits the output_text conv
   } } }
   const result = await runAgent(client, user, capture, { ai, classifier, onEvent: e => events.push(e) })
   assert.equal(result.plan.reply, plan.reply)
-  assert.equal(calls, 1, 'A valid streamed response must not trigger a repair')
+  assert.equal(calls, 2, 'One planning round and one final response, without a repair')
   assert.deepEqual(events.filter(e => e.type === 'reply').map(e => e.text), [plan.reply])
 })
 
-test('validation repair preserves visible text and does not stream a second provisional answer', async () => {
+test('validation repair stays private and streams only the checked final answer', async () => {
   let calls = 0
   const events = []
   const ai = { responses: { stream: () => {
@@ -183,7 +183,25 @@ test('validation repair preserves visible text and does not stream a second prov
   } } }
   const result = await runAgent(client, user, capture, { ai, classifier, onEvent: e => events.push(e) })
   assert.equal(result.plan.reply, 'Corrected answer')
-  assert.equal(calls, 2)
-  assert.deepEqual(events.filter(e => e.type === 'reply').map(e => e.text), [plan.reply])
+  assert.equal(calls, 3)
+  assert.deepEqual(events.filter(e => e.type === 'reply').map(e => e.text), ['Corrected answer'])
   assert.ok(events.some(e => e.type === 'progress' && e.text === 'Checking changes…'))
+})
+
+test('tool planning text is private; final stream has no tools and cannot change the action plan', async () => {
+  let calls = 0
+  const events = []
+  const ai = { responses: { stream: request => {
+    const round = ++calls
+    const text = round === 1 ? '{"reply":"Already updated your document"}' : JSON.stringify({ ...plan, reply: round === 2 ? 'Planning draft' : 'Final answer', changes: [{ action: 'delete' }] })
+    const response = round === 1
+      ? { status: 'completed', output: [{ type: 'function_call', name: 'search_history', call_id: 'read1', arguments: '{"query":"tea","before":null,"after":null}' }] }
+      : round === 2 ? { status: 'completed', output: [], output_text: JSON.stringify(plan) }
+        : { status: 'completed', output: [], output_text: text }
+    if (round === 3) assert.deepEqual(request.tools, [])
+    return { async *[Symbol.asyncIterator]() { yield { type: 'response.output_text.delta', delta: text } }, finalResponse: async () => response }
+  } } }
+  const result = await runAgent(client, user, capture, { ai, classifier, userName: 'Casey', onEvent: e => events.push(e) })
+  assert.deepEqual(events.filter(e => e.type === 'reply').map(e => e.text), ['Final answer'])
+  assert.deepEqual(result.plan.changes, [], 'Final text generation cannot introduce actions')
 })

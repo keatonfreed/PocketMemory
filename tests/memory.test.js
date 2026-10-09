@@ -22,7 +22,9 @@ test('capture replay creates one entry, one memory, and one revision', async () 
   try {
     const input = message('I prefer tea'); let calls = 0
     const agent = async () => { calls++; return result([create]) }
-    await capture('u1', input, { agent, transact }); await capture('u1', input, { agent, transact })
+    const saved = await capture('u1', input, { agent, transact }); await capture('u1', input, { agent, transact })
+    assert.equal(saved.sources[0].action, 'create')
+    assert.equal(saved.sources[0].title, create.title)
     assert.equal(calls, 1)
     for (const table of ['pm_entries', 'pm_knowledge', 'pm_revisions']) assert.equal((await database.query(`SELECT count(*) FROM ${table}`)).rows[0].count, 1)
     await assert.rejects(capture('u2', input, { agent, transact }), /already used/)
@@ -33,7 +35,8 @@ test('correction retains original history and versions; stale edits cannot overw
   try {
     await capture('u1', message('I prefer tea'), { transact, agent: async () => result([create]) })
     const { rows: [record] } = await database.query('SELECT * FROM pm_knowledge')
-    await capture('u1', message('Now I prefer coffee'), { transact, agent: async () => result([{ ...create, action: 'update', targetId: record.id, content: 'Prefers coffee', evidence: 'coffee' }]) })
+    const corrected = await capture('u1', message('Now I prefer coffee'), { transact, agent: async () => result([{ ...create, action: 'update', targetId: record.id, content: 'Prefers coffee', evidence: 'coffee' }]) })
+    assert.deepEqual(corrected.sources[0], { type: 'knowledge', id: record.id, action: 'update', title: create.title })
     const raw = { ...fields, id: record.id, requestId: crypto.randomUUID(), version: 1 }
     await assert.rejects(edit('u1', raw, transact), /changed elsewhere/)
     const request = { ...raw, version: 2, requestId: crypto.randomUUID(), content: 'Prefers decaf' }

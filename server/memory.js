@@ -9,7 +9,7 @@ async function saveRevision(client, userId, record, reason) {
   await client.query('INSERT INTO pm_revisions(user_id,knowledge_id,version,snapshot,source_id,reason) VALUES ($1,$2,$3,$4,$5,$6)', [userId, record.id, record.version, record, record.sourceId, reason])
   await publish(client, userId, 'knowledge', record)
 }
-export async function capture(userId, raw, { agent = runAgent, transact = transaction, onEvent } = {}) {
+export async function capture(userId, raw, { agent = runAgent, transact = transaction, onEvent, userName } = {}) {
   const input = captureSchema.parse(raw)
   // Commit the original before calling any AI provider. Retries use the same ID.
   await transact(userId, async client => {
@@ -31,8 +31,9 @@ export async function capture(userId, raw, { agent = runAgent, transact = transa
       if (current.rows[0].status === 'done') return entry(current.rows[0])
       const consent = await client.query('SELECT ai_enabled FROM pm_consent WHERE user_id=$1', [userId])
       if (!consent.rows[0]?.ai_enabled) throw Object.assign(new Error('Enable AI processing in Settings to process this entry.'), { status: 403 })
-      const { plan, webSources } = await agent(client, userId, input, { onEvent })
+      const { plan, webSources } = await agent(client, userId, input, { onEvent, userName })
       if (plan.changes.length || plan.reminders.length) onEvent?.({ type: 'progress', text: 'Saving changes…' })
+      const actionSources = []
       for (const change of plan.changes) {
         if (change.action === 'delete') {
           const { rows } = await client.query('DELETE FROM pm_knowledge WHERE id=$1 AND user_id=$2 RETURNING id', [change.targetId, userId])
@@ -52,6 +53,7 @@ export async function capture(userId, raw, { agent = runAgent, transact = transa
           ({ rows } = await client.query('UPDATE pm_knowledge SET title=$3, content=$4, kind=$5, source_id=$6, expires_at=$7, event_at=$8, version=version+1, updated_at=now() WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL RETURNING *', [change.targetId, userId, change.title, change.content, change.kind, input.id, change.expiresAt, change.eventAt]))
           if (!rows.length) throw new Error('Memory changed before update')
         }
+        actionSources.push({ type: 'knowledge', id: rows[0].id, action: change.action, title: rows[0].title })
         await saveRevision(client, userId, knowledge(rows[0]), change.reason)
       }
       for (const item of plan.reminders) {
@@ -69,7 +71,7 @@ export async function capture(userId, raw, { agent = runAgent, transact = transa
         if (!rows.length) throw new Error('Reminder changed before update')
         await publish(client, userId, 'reminder', reminder(rows[0]))
       }
-      const { rows } = await client.query("UPDATE pm_entries SET status='done',reply=$3,sources=$4,web_sources=$5,error=NULL WHERE id=$1 AND user_id=$2 RETURNING *", [input.id, userId, plan.reply, JSON.stringify(plan.sources), JSON.stringify(webSources)])
+      const { rows } = await client.query("UPDATE pm_entries SET status='done',reply=$3,sources=$4,web_sources=$5,error=NULL WHERE id=$1 AND user_id=$2 RETURNING *", [input.id, userId, plan.reply, JSON.stringify([...actionSources, ...plan.sources.filter(source => !actionSources.some(action => action.type === source.type && action.id === source.id))]), JSON.stringify(webSources)])
       const result = entry(rows[0])
       await publish(client, userId, 'entry', result)
       return result

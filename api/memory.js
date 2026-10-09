@@ -16,11 +16,11 @@ export default endpoint(async (req, res) => {
   method(req, 'POST')
   const input = body(req)
   if (input.action === 'capture') {
-    if (!req.headers.accept?.includes('text/event-stream')) return res.json({ entry: await capture(account.id, input.data) })
+    if (!req.headers.accept?.includes('text/event-stream')) return res.json({ entry: await capture(account.id, input.data, { userName: account.name }) })
     const stream = eventStream(res)
     stream.emit({ type: 'connected', requestId: req.requestId })
     try {
-      const entry = await capture(account.id, input.data, { onEvent: stream.emit })
+      const entry = await capture(account.id, input.data, { onEvent: stream.emit, userName: account.name })
       stream.emit({ type: 'complete', entry })
     } catch (error) {
       error.requestId = req.requestId
