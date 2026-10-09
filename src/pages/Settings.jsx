@@ -1,23 +1,26 @@
-import { useState } from 'react'
-import { useMemory, setConsent, sync, signOut, deleteAccount, retry, discardOperation } from '../state/memory'
+import { ChevronRight, Cloud, Download, Shield, FileText, Mail, LogOut, Trash2, UserRound, RefreshCw, AlertCircle } from 'lucide-react'
+import { useMemory, sync, signOut, deleteAccount, retry, discardOperation } from '../state/memory'
 import { exportData } from '../lib/export'
 import AsyncButton from '../components/ui/AsyncButton'
 import Policy from '../components/ui/Policy'
-export default function Settings() {
-  const { user, data, syncing, online } = useMemory(), [policy, setPolicy] = useState(null)
-  if (policy) return <><button className="text-button" onClick={() => setPolicy(null)}>Back to Settings</button><Policy terms={policy === 'terms'} /></>
+import { contactSupport } from '../lib/support'
+export default function Settings({ page, onPageChange: setPage }) {
+  const { user, data, syncing, online } = useMemory()
   const failures = data.outbox.filter(o => o.error)
-  return <><header className="page-heading"><span className="wordmark">Pocket Memory</span><h1>Settings</h1></header>
-    <section className="settings-section"><h2>Account</h2><p>{user.name || 'Signed in with Apple'}</p><p className="muted">{user.email}</p><p className="hint">{online ? syncing ? 'Syncing…' : `${data.outbox.length} pending updates` : 'Offline — saved on this phone'}</p><AsyncButton className="text-button" disabled={syncing} onClick={sync}>Sync now</AsyncButton></section>
-    <section className="settings-section"><h2>AI processing</h2><p>OpenAI receives your entry and relevant memories to answer and organize information. TypeSafe receives your entry and recent context for classification. Both process information on their servers.</p><p className="hint">Turning this off pauses new processing. Your history and memories remain available. Research is a separate choice for each request.</p><AsyncButton className="secondary-button" onClick={() => setConsent(!data.consent)}>{data.consent ? 'Pause AI processing' : 'Allow AI processing'}</AsyncButton></section>
-    {!!failures.length && <section className="settings-section"><h2>Updates needing attention</h2>{failures.map(o => <div key={o.id} className="pending-error"><strong>{o.action === 'capture' ? o.data.text.slice(0, 100) : o.data.title || o.action}</strong><p className="error">{o.error}</p>{o.conflict ? <p className="hint">Open this memory to compare your draft with the latest version.</p> : <AsyncButton className="text-button" onClick={() => retry(o.id)}>Retry</AsyncButton>}<AsyncButton className="text-button" onClick={() => discardOperation(o.id)}>Stop retrying</AsyncButton></div>)}</section>}
-    <section className="settings-section"><h2>Your information</h2><AsyncButton className="text-button" onClick={() => exportData(data)}>Export history, memories, and versions</AsyncButton><button className="text-button" onClick={() => setPolicy('privacy')}>Privacy policy</button><button className="text-button" onClick={() => setPolicy('terms')}>Terms of use</button><a className="text-button" href="mailto:keaton@mfreed.com">Contact support</a></section>
-    <section className="settings-section"><AsyncButton className="text-button" disabled={syncing} onClick={async () => {
-      if ((data.outbox.length || Object.values(data.drafts).some(value => typeof value === 'string' ? value.trim() : Boolean(value))) && !window.confirm('Signing out clears this phone’s unsynced entries and drafts. Export first if you need them. Continue?')) return
-      await signOut()
-    }}>Sign out</AsyncButton><AsyncButton className="text-button danger" disabled={syncing} onClick={async () => {
-      if (!window.confirm('Permanently delete your account, history, memories, versions, and reminders? You will confirm your identity with Apple first. This cannot be undone.')) return
+  if (page === 'privacy' || page === 'terms') return <Policy terms={page === 'terms'} />
+  if (page === 'data') return <><header className="page-heading data-heading"><h1>Your data</h1></header><div className="settings-group"><div className="settings-row"><Cloud size={22} /><span>{!online ? 'Offline' : syncing ? 'Syncing…' : data.outbox.length ? `${data.outbox.length} pending` : 'Up to date'}</span></div><AsyncButton className="settings-row" disabled={syncing} onClick={sync}><RefreshCw size={19} /><span>Sync now</span></AsyncButton><AsyncButton className="settings-row" onClick={() => exportData(data)}><Download size={20} /><span>Export everything</span></AsyncButton></div>
+    {failures.map(o => <section className="pending-error" key={o.id}><h2>{o.data.title || 'Update needs attention'}</h2><p className="error">{o.error}</p>{!o.conflict && <AsyncButton className="text-button" onClick={() => retry(o.id)}>Retry</AsyncButton>}<AsyncButton className="text-button" onClick={() => discardOperation(o.id)}>Stop retrying</AsyncButton></section>)}
+    <div className="settings-group"><AsyncButton className="settings-row danger" disabled={syncing} onClick={async () => {
+      if (!window.confirm('Permanently delete your account and all its data? You’ll confirm with Apple. This cannot be undone.')) return
       await deleteAccount()
-    }}>Delete account and all data</AsyncButton></section>
+    }}><Trash2 size={20} /><span>Delete account</span></AsyncButton></div></>
+  const row = (Icon, title, destination) => <button className="settings-row" onClick={() => setPage(destination)}><Icon size={20} /><span>{title}</span><ChevronRight size={16} /></button>
+  return <><div className="account-card"><div className="account-avatar"><UserRound size={29} /></div><h2>{user.name || 'Your account'}</h2><p>{user.email}</p><span className="account-provider"> Signed in with Apple</span></div>
+    <div className="settings-group">{row(failures.length ? AlertCircle : Download, failures.length ? `Your data · ${failures.length} pending issues` : 'Your data', 'data')}</div>
+    <div className="settings-group">{row(Shield, 'Privacy', 'privacy')}{row(FileText, 'Terms', 'terms')}<AsyncButton className="settings-row" onClick={contactSupport}><Mail size={20} /><span>Contact support</span><ChevronRight size={16} /></AsyncButton></div>
+    <div className="settings-group"><AsyncButton className="settings-row" disabled={syncing} onClick={async () => {
+      if ((data.outbox.length || Object.values(data.drafts).some(value => typeof value === 'string' ? value.trim() : Boolean(value))) && !window.confirm('Sign out and clear this phone’s unsynced entries and drafts? Export first if you need them.')) return
+      await signOut()
+    }}><LogOut size={20} /><span>Sign out</span></AsyncButton></div>
   </>
 }

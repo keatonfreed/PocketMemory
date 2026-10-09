@@ -17,8 +17,8 @@ Preserve the user's voice. Do not turn every entry into a permanent fact. Questi
 A final response must match the provided JSON schema. changes contains ONLY supported memory creates/updates, never deletion. Each evidence field must be an exact substring of the latest user message. targetId is null for create; use a real retrieved ID for update. Set expiresAt only with a justified time limit, otherwise null. eventAt is the actual event time if known, not automatically the submission time. Do not invent dates. For lists, use plain text checkbox lines '- [ ]' and '- [x]'.
 Use classification as a hint, not permission or ground truth. If uncertain, preserve original history and ask instead of guessing changes. You cannot delete memories or history through chat: point to their delete controls.
 Create reminders only when the user explicitly asks to be reminded. Resolve relative dates using the supplied IANA timezone and current timestamp. If the time is missing or ambiguous ask before creating. These are one-time device reminders, not autonomous background work. Never claim email/calendar access, sending messages, recurring schedules, or completed external actions. Help prepare drafts/plans instead.
-Keep reply natural and concise, without artificial AI terminology. For pure capture, a short acknowledgement is enough. Cite personal claims using sources containing retrieved entry or knowledge IDs. The UI renders these sources; do not print raw UUIDs. Changes and reminders are only applied if the entire result validates. Do not claim a research result unless web search actually returned evidence.
-If web research is not enabled and current external information is needed, ask the user to enable Research for this request. Never invent current results.`
+Keep reply natural and concise, without artificial AI terminology. For quiet acceptance, reply must be an empty string, with no acknowledgement sentence. Always extract meaningful asserted information regardless of response mode. If memory processing discovers ambiguity that actually prevents a safe correction, return a brief clarification instead of silently guessing. If an explicit task or question needs a response, answer it even if classification missed it. Cite personal claims using sources containing retrieved entry or knowledge IDs. The UI renders these sources; do not print raw UUIDs. Changes and reminders are only applied if the entire result validates. Do not claim a research result unless web search actually returned evidence.
+If web research is not enabled and current external information is needed, explain that you cannot verify it in this request. Do not direct the user to a Research control; this app version has no research toggle. Never invent current results.`
 
 export async function runAgent(client, userId, capture, { ai, classifier = classify } = {}) {
   if (!ai && !process.env.OPENAI_API_KEY) throw Object.assign(new Error('The assistant is not configured yet. Your entry is saved.'), { status: 503 })
@@ -27,11 +27,15 @@ export async function runAgent(client, userId, capture, { ai, classifier = class
   const retrieve = createRetriever(client, userId)
   const recent = await retrieve.execute('search_history', { query: '', before: null, after: null })
   const classification = await classifier({ message: capture.text, recent: recent.slice(0, 5).map(e => ({ text: e.text, reply: e.reply })) }, { signal })
-  const model = classification.intent.choice === 'remember' && classification.intent.confidence >= 0.8
+  const responseMode = classification.response?.choice || 'answer'
+  const quiet = responseMode === 'accept' && classification.response.confidence >= 0.8 && !['assist', 'both'].includes(classification.intent.choice)
+  const personalContext = await retrieve.context()
+  const model = quiet
     ? process.env.MEMORY_MODEL || 'gpt-4.1-mini' : process.env.AGENT_MODEL || 'gpt-4.1-mini'
   const input = [
     { role: 'developer', content: instructions },
-    { role: 'developer', content: JSON.stringify({ now: new Date().toISOString(), submittedAt: capture.createdAt, timezone: capture.timezone, classification, recent }) },
+    { role: 'developer', content: JSON.stringify({ now: new Date().toISOString(), submittedAt: capture.createdAt, timezone: capture.timezone, classification, responseMode: quiet ? 'accept' : responseMode === 'accept' ? 'answer' : responseMode, recent, ...personalContext }) },
+    { role: 'developer', content: 'Use responseMode to guide the turn: accept = process memories quietly with an empty reply; answer = answer the request; act = carry out supported tasks and report the result; clarify = ask only the missing question. The personal context snapshot contains saved memories and pending reminders. When memoriesTruncated is true or details are missing, retrieve more. Read full records before updating. Do not treat prior replies as user facts.' },
     { role: 'user', content: capture.text },
   ]
   const webSources = new Map()
@@ -55,6 +59,7 @@ export async function runAgent(client, userId, capture, { ai, classifier = class
     if (!calls.length) {
       const raw = JSON.parse(response.output_text)
       if (raw.changes?.some(c => c.action === 'update' && !retrieve.fullyRead.has(c.targetId))) throw new Error('Read full memory before updating it')
+      if (quiet && /^(done|saved|remembered|got it)[.!]?$/i.test(raw.reply?.trim() || '')) raw.reply = ''
       const plan = validatePlan(raw, { input: capture.text, known: [...retrieve.known.values()], evidenceIds: retrieve.evidence })
       return { plan, webSources: [...webSources.values()], classification }
     }

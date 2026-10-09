@@ -1,6 +1,7 @@
 export function effectiveReminders(data) {
   const result = { ...data.reminders }
   for (const op of data.outbox) {
+    if (op.action === 'editReminder' && result[op.data.id]) result[op.data.id] = { ...result[op.data.id], title: op.data.title, dueAt: op.data.dueAt, completed: false }
     if (op.action === 'completeReminder' && result[op.data.id]) result[op.data.id] = { ...result[op.data.id], completed: op.data.completed }
     if (op.action === 'delete' && op.data.type === 'reminder') delete result[op.data.id]
   }

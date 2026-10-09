@@ -40,3 +40,5 @@ The old `ai/` dataset editor remains as an **offline legacy development utility*
 ## Before release
 
 See [release notes and required checks](docs/release.md). A successful build is not Apple approval or proof of live-provider behavior.
+
+The native welcome and Apple sign-in flow now includes explicit AI permission saved to the account. The website uses a separate public landing/support/policy layout. The microphone uses Capgo's native speech-recognition plugin (Apple speech service), with permissions requested on tap. Run `ios:sync` after pulling these UI/plugin changes; real dictation must be checked on iPhone.

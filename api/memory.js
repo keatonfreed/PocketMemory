@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { endpoint, body, method, user } from '../server/http.js'
+import { editReminder } from '../server/reminders.js'
 import { capture, edit } from '../server/memory.js'
 import { db, transaction, publish } from '../server/db.js'
 import { reminder } from '../server/records.js'
@@ -14,6 +15,7 @@ export default endpoint(async (req, res) => {
   const input = body(req)
   if (input.action === 'capture') return res.json({ entry: await capture(account.id, input.data) })
   if (input.action === 'edit') return res.json({ knowledge: await edit(account.id, input.data) })
+  if (input.action === 'editReminder') return res.json({ reminder: await editReminder(account.id, input.data) })
   if (input.action === 'completeReminder') {
     const data = z.object({ id: z.string().uuid(), completed: z.boolean() }).parse(input.data)
     await transaction(account.id, async client => {

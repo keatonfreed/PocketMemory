@@ -51,6 +51,7 @@ Edit `.env.local` locally. Keep real keys out of chat and Git. These are the act
 | `APPLE_TEAM_ID` | Your Apple Developer Team ID | Vercel server and Xcode signing |
 | `APPLE_KEY_ID` | Key ID shown for the Apple sign-in P8 key | Vercel server |
 | `APPLE_PRIVATE_KEY` | Contents of that P8 file; import with the command below | Vercel server |
+| `VITE_APP_STORE_URL` | Your exact `https://apps.apple.com/app/id…` listing URL; App Information → Apple ID supplies the numeric ID | Public web landing-page link |
 | `VITE_API_URL` | `https://pocket-memory-ai.vercel.app` | Public frontend/native build |
 | `IOS_BUILD_NUMBER` | `1` initially; increment for each App Store upload | Local Xcode generation only |
 | `DEV_ORIGINS` | Optional `http://localhost:5173` for local API development | Server development only; sync script omits it |
@@ -182,3 +183,7 @@ Before submitting, follow [the release checklist](release.md) for App Privacy, p
 The Vercel CLI is logged in and the existing project link was verified. `DATABASE_URL`, `OPENAI_API_KEY`, `TYPESAFE_API_KEY`, `TYPESAFE_MODEL`, `MEMORY_MODEL`, `AGENT_MODEL`, `BETTER_AUTH_URL`, `APPLE_BUNDLE_ID`, and `VITE_API_URL` were synced to Production. The three credential values are sensitive; public/model/identifier values are readable configuration. Existing Preview/Development scopes were verified intact.
 
 Still missing at this check: `BETTER_AUTH_SECRET`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`. Xcode was opened. No database reset or deployment was executed. The existing Production alias was Ready but still served the old May 7 deployment and old API routes. Setup-script tests and lint passed; no browser testing or live AI calls were performed.
+
+### If Apple sign-in reports incomplete server setup
+
+The production sign-in logs showed missing Better Auth tables (`user`, `session`, `account`, `verification`, `rateLimit`). Apple configuration alone does not create database tables. If you already cleared the old database, run `npm run db:migrate` once to create missing auth/app tables without deleting data. It uses the local `DATABASE_URL`; confirm it targets the same database as Vercel Production. If you still want the deliberate clean start, use the confirmed reset command in step 6 instead. These commands must never run automatically in response to a sign-in request.

@@ -1,43 +1,78 @@
 import { useEffect, useRef, useState } from 'react'
-import { BookOpen, CircleDot, Clock3, Settings2, ArrowLeft } from 'lucide-react'
-import { useMemory, initialize, signIn, setConsent } from './state/memory'
+import { Brain, UserRound, ArrowLeft, Plus } from 'lucide-react'
+import { useMemory, initialize, signIn, prepareReminderDraft, prepareMemoryDraft } from './state/memory'
 import { startLifecycle } from './lib/lifecycle'
 import { native } from './lib/storage'
 import Timeline, { Entry } from './pages/Timeline'
 import Knowledge from './pages/Knowledge'
 import Editor from './pages/Editor'
 import Reminders from './pages/Reminders'
+import ReminderEditor from './pages/ReminderEditor'
 import Settings from './pages/Settings'
 import Policy from './components/ui/Policy'
 import AsyncButton from './components/ui/AsyncButton'
 import ErrorBoundary from './components/ui/ErrorBoundary'
+import Feedback, { Loading } from './components/ui/Feedback'
+import Onboarding from './components/app/Onboarding'
+import Navigation from './components/app/Navigation'
+import Website from './pages/site/Website'
+import Screen from './components/app/Screen'
+import GettingReady from './components/app/GettingReady'
+import { softHaptic } from './lib/haptics'
 
-const tabs = [{ id: 'home', title: 'Home', icon: CircleDot }, { id: 'memory', title: 'Memory', icon: BookOpen }, { id: 'reminders', title: 'Reminders', icon: Clock3 }, { id: 'settings', title: 'Settings', icon: Settings2 }]
 function Application() {
-  const { ready, user, data, error, syncing, needsSignIn } = useMemory()
-  const [tab, setTab] = useState('home'), [detail, setDetail] = useState(null), [policy, setPolicy] = useState(location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : null), [consentDismissed, setConsentDismissed] = useState(false)
-  const scroller = useRef(null)
+  const { ready, user, data, error, syncing, needsSignIn, signingIn, preparingSignIn } = useMemory()
+  const [tab, setTab] = useState('home'), [detail, setDetail] = useState(null), [policy, setPolicy] = useState(location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : null)
+  const previousTab = useRef('home'), backSwipe = useRef(null), reminderEditor = useRef(null), memoryEditor = useRef(null), frame = useRef(null)
+  const [accountPage, setAccountPage] = useState(null), [focusCapture, setFocusCapture] = useState(false)
   useEffect(() => {
+    document.body.classList.add('native-app')
     void initialize()
     let stop, cancelled = false
     startLifecycle(id => { setTab('home'); setDetail(id ? { type: 'entry', id } : null) }).then(cleanup => { if (cancelled) cleanup(); else stop = cleanup }).catch(e => useMemory.setState({ error: e.message }))
-    return () => { cancelled = true; stop?.() }
+    return () => { cancelled = true; stop?.(); document.body.classList.remove('native-app') }
   }, [])
-  useEffect(() => { scroller.current?.scrollTo({ top: 0 }) }, [tab, detail?.id, policy])
+  const routeKey = detail ? `${detail.type}:${detail.id}` : tab === 'settings' ? `account:${accountPage || 'home'}` : tab
+  async function leaveReminder(action) {
+    if (detail?.type === 'reminder' && reminderEditor.current && !await reminderEditor.current.save()) return
+    action()
+  }
+  function openAccount() { void leaveReminder(() => { previousTab.current = tab; setAccountPage(null); setDetail(null); setTab('settings') }) }
+  async function addFromPage() {
+    if (tab === 'reminders') await prepareReminderDraft()
+    else if (tab === 'memory') await prepareMemoryDraft()
+    setFocusCapture(true); setDetail(null); setTab('home')
+  }
+  function goHome() {
+    void leaveReminder(() => {
+      if (tab === 'home' && !detail) frame.current?.querySelector('.app-scroll:not([aria-hidden="true"])')?.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
+      else { setTab('home'); setDetail(null) }
+    })
+  }
+  function backFromAccount() { if (accountPage) setAccountPage(null); else setTab(previousTab.current) }
   const openMemory = id => setDetail({ type: 'knowledge', id })
   const openEntry = id => setDetail({ type: 'entry', id })
-  if (!ready) return <div className="launch"><span className="wordmark">Pocket Memory</span><p>Opening your memory…</p></div>
-  if (policy) return <main className="public-page"><button className="text-button" onClick={() => setPolicy(null)}><ArrowLeft size={18} /> Back</button><Policy terms={policy === 'terms'} /></main>
-  if (!user) return <main className="welcome"><span className="wordmark">Pocket Memory</span><div><div className="brand-mark"><CircleDot size={38} /></div><h1>A little less<br />to keep in your head.</h1><p>Tell it what matters. Come back to your words, find what changed, and get help with what’s next.</p></div>{native ? <AsyncButton className="apple-signin" onClick={signIn}><span aria-hidden="true"></span> Sign in with Apple</AsyncButton> : <p className="hint">Pocket Memory is an iPhone app.</p>}<p className="hint">Your memory stays with your account. AI processing is optional and explained before you use it.</p>{error && <p role="alert" className="error">{error}</p>}<footer><button onClick={() => setPolicy('privacy')}>Privacy</button><button onClick={() => setPolicy('terms')}>Terms</button><a href="mailto:keaton@mfreed.com">Support</a></footer></main>
-  return <div className="app-frame">
-    <div className="sync-line" aria-live="polite">{!useMemory.getState().online ? 'Offline · saved on this phone' : syncing ? 'Syncing' : data.outbox.length ? `${data.outbox.length} pending` : ''}</div>
-    <main className="app-scroll" ref={scroller}>
+  if (!ready) return <div className="launch"><Brain size={42} /><Loading label="Opening Pocket Memory…" /></div>
+  const policyPage = policy && <main className="public-page"><button className="text-button" onClick={() => setPolicy(null)}><ArrowLeft size={18} /> Back</button><Policy terms={policy === 'terms'} /></main>
+  const setupLoading = preparingSignIn || Boolean(user && (signingIn || !data.consent && syncing && !needsSignIn))
+  if (!user || setupLoading) return <>{policyPage}<div hidden={Boolean(policy) || setupLoading}>{!user && <Onboarding onPolicy={setPolicy} />}</div>{setupLoading && <GettingReady key="setup" />}</>
+  if (!data.consent && !needsSignIn) return <>{policyPage}<div hidden={Boolean(policy)}><Onboarding consentOnly onPolicy={setPolicy} /></div></>
+  if (policy) return policyPage
+  return <div ref={frame} className="app-frame" onTouchStart={e => {
+    const touch = e.touches[0]
+    backSwipe.current = (tab === 'settings' && !detail || detail?.type === 'reminder' || detail?.type === 'knowledge') && e.touches.length === 1 && touch.clientX <= 24 ? { x: touch.clientX, y: touch.clientY } : null
+  }} onTouchCancel={() => { backSwipe.current = null }} onTouchEnd={e => {
+    const start = backSwipe.current, touch = e.changedTouches[0]; backSwipe.current = null
+    if (start && touch && touch.clientX - start.x > 90 && Math.abs(touch.clientY - start.y) < 50) { softHaptic(); if (detail?.type === 'reminder') void reminderEditor.current?.saveAndClose(); else if (detail?.type === 'knowledge') void memoryEditor.current?.saveAndClose(); else backFromAccount() }
+  }}>
+    <header className="app-topbar"><button className="brand-word" onClick={goHome}><Brain size={20} /> Pocket Memory</button><button className={tab === 'settings' ? 'text-button account-back' : 'icon-button'} aria-label={tab === 'settings' ? accountPage ? 'Account' : 'Back' : 'Account'} onClick={tab === 'settings' ? backFromAccount : openAccount}>{tab === 'settings' ? <><ArrowLeft size={18} /><span>{accountPage ? 'Account' : 'Back'}</span></> : <UserRound size={21} />}</button></header>
+    <Screen pageKey={routeKey} resetScroll={tab === 'home' && !detail && focusCapture}>
       {needsSignIn && <section className="notice"><p>Sign in again to continue syncing. Your local entries are safe.</p><AsyncButton className="apple-signin" onClick={signIn}>Sign in with Apple</AsyncButton></section>}
-      {error && <p className="error global-error" role="alert">{error}</p>}
-      {!data.consent && !consentDismissed && tab === 'home' && !detail && <section className="consent"><h2>Let Pocket Memory help you remember</h2><p>OpenAI processes your entries and relevant memories to answer and organize information. TypeSafe’s JEV processes entries and recent context for classification.</p><p>You can pause this anytime in Settings. Research is off unless you enable it for a request.</p><button className="text-button" onClick={() => setPolicy('privacy')}>Read the privacy policy</button><div className="consent-actions"><AsyncButton className="primary-button" onClick={() => setConsent(true)}>Allow AI processing</AsyncButton><button className="text-button" onClick={() => setConsentDismissed(true)}>Not now</button></div></section>}
-      {detail?.type === 'knowledge' ? <Editor key={detail.id} id={detail.id} onClose={() => setDetail(null)} onEntry={openEntry} /> : detail?.type === 'entry' ? <><button className="text-button" onClick={() => setDetail(null)}><ArrowLeft size={18} /> Back</button>{data.entries[detail.id] ? <Entry entry={data.entries[detail.id]} onMemory={openMemory} onEntry={openEntry} expanded /> : <p className="empty">This original entry is no longer available.</p>}</> : tab === 'home' ? <Timeline onMemory={openMemory} onEntry={openEntry} /> : tab === 'memory' ? <Knowledge onOpen={openMemory} /> : tab === 'reminders' ? <Reminders onEntry={openEntry} /> : <Settings />}
-    </main>
-    {!detail && <nav className="bottom-nav" aria-label="Main navigation">{tabs.map(({ id, title, icon: Icon }) => <button key={id} className={tab === id ? 'active' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => { setTab(id); setDetail(null) }}><Icon size={23} strokeWidth={1.7} /><span>{title}</span></button>)}</nav>}
+      {error && <Feedback title="Couldn’t sync">{error}</Feedback>}
+      {detail?.type === 'reminder' ? <ReminderEditor ref={reminderEditor} key={detail.id} id={detail.id} onClose={() => setDetail(null)} /> : detail?.type === 'knowledge' ? <Editor ref={memoryEditor} key={detail.id} id={detail.id} onClose={() => setDetail(null)} onEntry={openEntry} /> : detail?.type === 'entry' ? <><button className="text-button" onClick={() => setDetail(null)}><ArrowLeft size={18} /> Back</button>{data.entries[detail.id] ? <Entry entry={data.entries[detail.id]} onMemory={openMemory} onEntry={openEntry} /> : <p className="empty">This original entry is no longer available.</p>}</> : tab === 'home' ? <Timeline onMemory={openMemory} onEntry={openEntry} focusCapture={focusCapture} /> : tab === 'memory' ? <Knowledge onOpen={openMemory} /> : tab === 'reminders' ? <Reminders onOpen={id => setDetail({ type: 'reminder', id })} /> : <Settings page={accountPage} onPageChange={setAccountPage} />}
+    </Screen>
+    {!detail && (tab === 'reminders' || tab === 'memory') && <div className="page-add-dock"><AsyncButton className="page-add-button" busyLabel="Opening…" onClick={addFromPage}><Plus size={15} />{tab === 'reminders' ? 'Add reminder' : 'Add to memory'}</AsyncButton></div>}
+    {!detail && <Navigation tab={tab} onChange={id => { setFocusCapture(false); setTab(id); setDetail(null) }} />}
   </div>
 }
-export default function App() { return <ErrorBoundary><Application /></ErrorBoundary> }
+export default function App() { return <ErrorBoundary>{native ? <Application /> : <Website />}</ErrorBoundary> }

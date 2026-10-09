@@ -1,3 +1,4 @@
+import { publicError } from './errors.js'
 import { auth } from './auth.js'
 export function headers(req) {
   const result = new Headers()
@@ -27,13 +28,13 @@ export async function user(req) {
   if (!session) throw Object.assign(new Error('Please sign in again. Your unsynced entries are still on this device.'), { status: 401 })
   return session.user
 }
-export const endpoint = fn => async (req, res) => {
+export const endpoint = (fn, { fallback } = {}) => async (req, res) => {
   if (!cors(req, res)) return
   try { await fn(req, res) } catch (e) {
-    const status = e.name === 'ZodError' || e instanceof SyntaxError ? 400 : typeof e.status === 'number' ? e.status : e.statusCode || 500
-    // Never log personal input, AI prompts, tokens, or provider response bodies.
-    console.error('request_failed', { name: e.name, status })
-    res.status(status).json({ conflict: Boolean(e.conflict), error: status < 500 || status === 503 ? e.message : 'This request could not finish. Your entry is saved; please retry.' })
+    const failure = publicError(e, fallback)
+    // Log diagnostics, never user content, credentials, or provider bodies.
+    console.error('request_failed', { name: e.name, status: failure.status, code: failure.code })
+    res.status(failure.status).json(failure)
   }
 }
 export function method(req, expected) {

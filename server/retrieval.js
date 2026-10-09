@@ -21,6 +21,21 @@ export function createRetriever(client, userId) {
   }
   return {
     known, evidence, fullyRead, remember,
+    async context() {
+      // Bound prompt size; search/read tools still expose everything beyond this snapshot.
+      const { rows } = await client.query('SELECT * FROM pm_knowledge WHERE user_id=$1 AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > now()) ORDER BY updated_at DESC, id DESC LIMIT 201', [userId])
+      let budget = 100000
+      const memories = []
+      for (const row of rows.slice(0, 200)) {
+        const record = previewRecord(knowledge(row))
+        const size = JSON.stringify(record).length
+        if (size > budget) break
+        budget -= size
+        memories.push(record)
+      }
+      remember('knowledge', memories)
+      return { memories, memoriesTruncated: memories.length < rows.length, reminders: await this.execute('list_reminders', {}) }
+    },
     async execute(name, args) {
       if (name === 'search_history' || name === 'search_knowledge') {
         const type = name === 'search_history' ? 'entry' : 'knowledge'

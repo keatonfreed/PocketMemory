@@ -18,8 +18,8 @@ export function reconcileNotifications(reminders) {
 export async function enableNotifications(reminders) {
   if (!native) throw new Error('Notifications are available in the iPhone app.')
   const permission = await LocalNotifications.requestPermissions()
-  if (permission.display !== 'granted') throw new Error('Notifications are disabled. You can allow them in iPhone Settings.')
-  await reconcileNotifications(reminders)
+  if (permission.display === 'granted') await reconcileNotifications(reminders)
+  return permission.display
 }
 export async function clearNotifications() {
   await queue

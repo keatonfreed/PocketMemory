@@ -15,6 +15,7 @@ export const captureSchema = z.object({
   research: z.boolean().default(false),
 }).strict()
 export const editSchema = z.object({ id, requestId: id, version: z.number().int().positive(), ...knowledgeFields.shape }).strict()
+export const editReminderSchema = z.object({ id, title: z.string().trim().min(1).max(160), dueAt: z.string().datetime({ offset: true }) }).strict()
 export const planSchema = z.object({
   reply: z.string().max(16000),
   sources: z.array(z.object({ type: z.enum(['entry', 'knowledge']), id })).max(30),

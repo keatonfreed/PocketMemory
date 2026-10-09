@@ -249,6 +249,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				TARGETED_DEVICE_FAMILY = 1;
+				DEVELOPMENT_TEAM = APUH7AUTXB;
 			};
 			name = Debug;
 		};
@@ -305,6 +306,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				TARGETED_DEVICE_FAMILY = 1;
+				DEVELOPMENT_TEAM = APUH7AUTXB;
 			};
 			name = Release;
 		};
@@ -329,6 +331,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				DEVELOPMENT_TEAM = APUH7AUTXB;
 			};
 			name = Debug;
 		};
@@ -351,6 +354,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				DEVELOPMENT_TEAM = APUH7AUTXB;
 			};
 			name = Release;
 		};

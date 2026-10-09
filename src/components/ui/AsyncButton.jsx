@@ -1,8 +1,11 @@
+import { isUserCancellation } from '../../../shared/interaction'
 import { useState } from 'react'
-export default function AsyncButton({ onClick, children, className = '', disabled = false, ...props }) {
+import Feedback, { Loading } from './Feedback'
+export default function AsyncButton({ onClick, beforeAction, children, className = '', disabled = false, busyLabel = 'Please wait…', errorTitle = 'Couldn’t complete that', ...props }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  return <><button {...props} className={className} disabled={busy || disabled} onClick={async () => {
+  return <><button {...props} className={className} disabled={busy || disabled} aria-busy={busy} onClick={async () => {
+    if (beforeAction && !beforeAction()) return
     setBusy(true); setError('')
-    try { await onClick() } catch (e) { setError(e.message) } finally { setBusy(false) }
-  }}>{busy ? 'Please wait…' : children}</button>{error && <p className="error" role="alert">{error}</p>}</>
+    try { await onClick() } catch (e) { if (!isUserCancellation(e)) setError(e.message || 'Please try again.') } finally { setBusy(false) }
+  }}>{busy ? <Loading label={busyLabel} /> : children}</button>{error && <Feedback title={errorTitle}>{error}</Feedback>}</>
 }

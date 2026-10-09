@@ -13,9 +13,9 @@ Server writes serialize per account with Postgres transaction-scoped advisory lo
 ## One assistant workflow
 
 1. Store the original text and chronology.
-2. Ask JEV focused Choice questions for intent and lifetime, with real recent context.
-3. Route a confident capture to the configurable memory model; otherwise use the agent model.
-4. The Responses loop can search original history, search current/expired knowledge, read a record with its revisions, and list reminders. All queries are parameterized and account-scoped. Search uses Postgres full-text plus literal substring matching. There is no vector service or knowledge graph.
+2. Ask JEV focused Choice questions for intent, lifetime and response mode (accept, answer, act, clarify), with real recent context.
+3. Route confident quiet acceptance to the configurable memory model; otherwise use the agent model. Quiet captures return an empty reply; questions, tasks and necessary clarification remain visible. The device shows Saved while processing continues.
+4. Start with up to 200 active memory previews (100,000 characters), up to 50 pending reminders, recent history, current time and timezone. Mark truncated memory context explicitly; older or full records remain available through tools. The Responses loop can search original history, search current/expired knowledge, read a record with its revisions, and list reminders. All queries are parameterized and account-scoped. Search uses Postgres full-text plus literal substring matching. There is no vector service or knowledge graph.
 5. Research opt-in exposes OpenAI web search for that request only. Return source annotations as links.
 6. Validate final structured output with Zod and enforce semantic invariants in code: valid targets, exact source substrings, no double update to a memory, no unknown citations, future reminders, and normalized exact deduplication. Semantic deduplication and ambiguity handling also depend on the model and need real-data evaluation.
 7. Commit the complete result; then sync it to the device.

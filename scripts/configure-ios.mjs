@@ -3,6 +3,9 @@ import { execFileSync } from 'node:child_process'
 import xcode from 'xcode'
 import { config } from 'dotenv'
 config({ path: '.env.local', quiet: true })
+function writeIfChanged(path, contents) {
+  if (!fs.existsSync(path) || fs.readFileSync(path, 'utf8') !== contents) fs.writeFileSync(path, contents)
+}
 const projectPath = 'ios/App/App.xcodeproj/project.pbxproj'
 const project = xcode.project(projectPath)
 project.parseSync()
@@ -32,15 +35,32 @@ for (const file of Object.values(project.pbxFileReferenceSection())) {
     delete file.explicitFileType
   }
 }
-fs.writeFileSync(projectPath, project.writeSync())
-fs.writeFileSync('ios/App/App/App.entitlements', `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>com.apple.developer.applesignin</key><array><string>Default</string></array></dict></plist>\n`)
+const entitlementPath = 'ios/App/App/App.entitlements'
+// Entitlements are source-controlled signing inputs. Preserve Xcode formatting and
+// any additional capabilities; a normal sync must never rewrite this file.
+if (fs.existsSync(entitlementPath)) {
+  const entitlements = JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', entitlementPath], { encoding: 'utf8' }))
+  if (!entitlements['com.apple.developer.applesignin']?.includes('Default')) {
+    throw new Error('Enable Sign in with Apple in Xcode Signing & Capabilities before syncing. Existing entitlements were left unchanged.')
+  }
+} else {
+  writeIfChanged(entitlementPath, `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>com.apple.developer.applesignin</key><array><string>Default</string></array></dict></plist>\n`)
+}
+writeIfChanged(projectPath, project.writeSync())
 const plistPath = 'ios/App/App/Info.plist'
 const info = JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', plistPath], { encoding: 'utf8' }))
+const originalInfo = JSON.stringify(info)
+info.NSMicrophoneUsageDescription = 'Use the microphone to dictate thoughts into Pocket Memory.'
+info.NSSpeechRecognitionUsageDescription = 'Turn your spoken thoughts into editable text. Speech may be processed by Apple.'
+info.UISupportedInterfaceOrientations = ['UIInterfaceOrientationPortrait']
+info['UISupportedInterfaceOrientations~ipad'] = ['UIInterfaceOrientationPortrait']
 info.UIUserInterfaceStyle = 'Dark'
 info.UIFileSharingEnabled = false
 info.LSSupportsOpeningDocumentsInPlace = false
 // SQLCipher is linked by the SQLite plugin; review export compliance before distribution.
 info.ITSAppUsesNonExemptEncryption = true
-fs.writeFileSync(plistPath, JSON.stringify(info))
-execFileSync('plutil', ['-convert', 'xml1', plistPath])
+if (JSON.stringify(info) !== originalInfo) {
+  const xml = execFileSync('plutil', ['-convert', 'xml1', '-o', '-', '-'], { input: JSON.stringify(info), encoding: 'utf8' })
+  writeIfChanged(plistPath, xml)
+}
 console.log('Configured Sign in with Apple, bundle ID, privacy manifest, and iPhone target.')

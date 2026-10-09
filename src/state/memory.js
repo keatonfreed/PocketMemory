@@ -6,7 +6,7 @@ import { reconcileNotifications, clearNotifications } from '../lib/notifications
 import { effectiveReminders } from '../../shared/reminders'
 import { SocialLogin } from '@capgo/capacitor-social-login'
 let writes = Promise.resolve(), syncing = false, authenticating = false, epoch = 0, retryTimer, syncFailures = 0
-export const useMemory = create(() => ({ ready: false, user: null, data: emptyState(), syncing: false, error: null, online: navigator.onLine, needsSignIn: false }))
+export const useMemory = create(() => ({ ready: false, signingIn: false, preparingSignIn: false, user: null, data: emptyState(), syncing: false, error: null, online: navigator.onLine, needsSignIn: false }))
 function update(fn) {
   const generation = epoch
   const job = writes.then(async () => {
@@ -32,11 +32,15 @@ export async function initialize() {
     if (useMemory.getState().user) void sync()
   } catch (error) { useMemory.setState({ ready: true, error: error.message }) }
 }
-export async function signIn({ expectedUserId, skipSync = false } = {}) {
+export async function signIn({ expectedUserId, skipSync = false, allowAI = false } = {}) {
   if (authenticating) throw new Error('Sign-in is already in progress.')
   authenticating = true
-  try { await authenticate(expectedUserId) }
-  finally { authenticating = false }
+  useMemory.setState({ signingIn: true })
+  try {
+    await authenticate(expectedUserId)
+    if (allowAI) await setConsent(true)
+  }
+  finally { authenticating = false; useMemory.setState({ signingIn: false, preparingSignIn: false }) }
   if (!skipSync) await sync()
 }
 async function authenticate(expectedUserId) {
@@ -45,6 +49,7 @@ async function authenticate(expectedUserId) {
   await SocialLogin.initialize({ apple: { redirectUrl: '', useProperTokenExchange: true } })
   const nonce = crypto.randomUUID() + crypto.randomUUID()
   const { result } = await SocialLogin.login({ provider: 'apple', options: { scopes: ['email', 'name'], nonce } })
+  useMemory.setState({ preparingSignIn: true })
   let session
   try {
     session = await request('/api/session', { method: 'POST', data: { code: result.authorizationCode, nonce, firstName: result.profile.givenName, lastName: result.profile.familyName } })
@@ -87,6 +92,12 @@ export async function setConsent(consent) {
   await request('/api/account', { method: 'POST', data: { consent } })
   await update(data => ({ ...data, consent }))
   if (consent) void sync()
+}
+export async function prepareReminderDraft() {
+  await update(data => data.drafts.composer?.trim() ? data : { ...data, drafts: { ...data.drafts, composer: 'Remind me to ' } })
+}
+export async function prepareMemoryDraft() {
+  await update(data => data.drafts.composer?.trim() ? data : { ...data, drafts: { ...data.drafts, composer: 'Remember that ' } })
 }
 export async function saveDraft(key, value) { await update(data => ({ ...data, drafts: { ...data.drafts, [key]: value } })) }
 export async function submit(text, research) {
