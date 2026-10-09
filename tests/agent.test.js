@@ -154,3 +154,36 @@ test('unsupported provider parameters keep actionable diagnostics and avoid setu
   const ai = { responses: { create: async () => { throw Object.assign(new Error('Unsupported field'), { status: 400, code: 'unknown_parameter', param: 'input[3].parsed_arguments' }) } } }
   await assert.rejects(runAgent(client, user, capture, { ai, classifier }), error => error.code === 'AI_REQUEST_INVALID' && error.cause.param === 'input[3].parsed_arguments')
 })
+
+test('streaming completion validates content when SDK omits the output_text convenience field', async () => {
+  let calls = 0
+  const text = JSON.stringify(plan), events = []
+  const ai = { responses: { stream: () => {
+    calls++
+    return {
+      async *[Symbol.asyncIterator]() { yield { type: 'response.output_text.delta', delta: text } },
+      finalResponse: async () => ({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text, parsed: null }] }] }),
+    }
+  } } }
+  const result = await runAgent(client, user, capture, { ai, classifier, onEvent: e => events.push(e) })
+  assert.equal(result.plan.reply, plan.reply)
+  assert.equal(calls, 1, 'A valid streamed response must not trigger a repair')
+  assert.deepEqual(events.filter(e => e.type === 'reply').map(e => e.text), [plan.reply])
+})
+
+test('validation repair preserves visible text and does not stream a second provisional answer', async () => {
+  let calls = 0
+  const events = []
+  const ai = { responses: { stream: () => {
+    const text = JSON.stringify(calls++ === 0 ? { ...plan, sources: [{ type: 'entry', id: memoryId }] } : { ...plan, reply: 'Corrected answer' })
+    return {
+      async *[Symbol.asyncIterator]() { yield { type: 'response.output_text.delta', delta: text } },
+      finalResponse: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text }] }] }),
+    }
+  } } }
+  const result = await runAgent(client, user, capture, { ai, classifier, onEvent: e => events.push(e) })
+  assert.equal(result.plan.reply, 'Corrected answer')
+  assert.equal(calls, 2)
+  assert.deepEqual(events.filter(e => e.type === 'reply').map(e => e.text), [plan.reply])
+  assert.ok(events.some(e => e.type === 'progress' && e.text === 'Checking changes…'))
+})

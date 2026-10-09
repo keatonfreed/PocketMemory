@@ -61,14 +61,14 @@ async function runTurn(client, userId, capture, { ai, classifier = classify, onE
         if (event.type === 'response.output_text.delta') {
           json += event.delta
           const reply = partialReply(json)
-          if (routing.reply && reply !== shown) { shown = reply; onEvent({ type: 'reply', text: reply }) }
+          if (routing.reply && !repaired && reply !== shown) { shown = reply; onEvent({ type: 'reply', text: reply }) }
         }
       }
       response = await stream.finalResponse()
     } else response = await ai.responses.create(request, { signal })
     if (response.status !== 'completed') {
       if (response.incomplete_details?.reason === 'max_output_tokens' && !repaired) {
-        repaired = true; step--; onEvent?.({ type: 'reply', text: '' }); continue
+        repaired = true; step--; onEvent?.({ type: 'progress', text: 'Finishing your response…' }); continue
       }
       throw Object.assign(new Error('The assistant did not complete the response. Your entry is saved; please retry.'), { status: 503, code: 'AI_INCOMPLETE' })
     }
@@ -90,7 +90,12 @@ async function runTurn(client, userId, capture, { ai, classifier = classify, onE
     if (!calls.length) {
       try {
         trace.stage = 'validation'
-        const raw = JSON.parse(response.output_text)
+        const outputText = response.output_text ?? response.output
+          .filter(item => item.type === 'message')
+          .flatMap(item => item.content || [])
+          .filter(content => content.type === 'output_text')
+          .map(content => content.text).join('')
+        const raw = JSON.parse(outputText)
         // Enforce Jev's permissions in code as well as in the prompt.
         if (!routing.actions) { raw.changes = []; raw.reminders = [] }
         if (!routing.reply) raw.reply = ''
@@ -102,7 +107,7 @@ async function runTurn(client, userId, capture, { ai, classifier = classify, onE
         if (repaired) throw Object.assign(new Error('The assistant could not validate its changes. Your entry is saved; please retry.'), { status: 503, code: 'AI_INVALID_PLAN', cause: error })
         repaired = true
         input.push({ role: 'developer', content: `The plan was rejected: ${error.name === 'ZodError' ? 'The JSON did not match the required schema.' : error.message}. Correct it, retrieving the necessary records first. Never invent evidence or targets; omit unsupported changes.` })
-        onEvent?.({ type: 'reply', text: '' })
+        onEvent?.({ type: 'progress', text: 'Checking changes…' })
         step--
         continue
       }
