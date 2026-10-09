@@ -2,7 +2,7 @@ import CaptureBox from '../components/app/CaptureBox'
 import EmptyState from '../components/ui/EmptyState'
 import { useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Brain, Check, FileText, RotateCw } from 'lucide-react'
+import { Brain, Check, FileText, Loader2, RotateCw } from 'lucide-react'
 import { useMemory, retry } from '../state/memory'
 import AsyncButton from '../components/ui/AsyncButton'
 import { Loading } from '../components/ui/Feedback'
@@ -21,7 +21,7 @@ export function Entry({ entry, onMemory, onEntry }) {
   const reply = entry.reply?.trim()
   const showReceipt = !pending && !failed && !reply
   const transition = { duration: reduced ? 0 : .24, ease: [.25, .1, .25, 1] }
-  return <motion.article layout={reduced ? false : 'position'} transition={transition} className="conversation-entry" id={`entry-${entry.id}`}>
+  return <motion.article layout={reduced ? false : 'position'} transition={transition} className={`conversation-entry${!reply && !turn?.reply && !failed ? ' conversation-quiet' : ''}`} id={`entry-${entry.id}`}>
     <motion.div layout={reduced ? false : 'position'} transition={transition} className="conversation-response">
       {pending ? (turn?.reply ? <div className="assistant-in-progress">{turn.text ? <p className="conversation-answer">{turn.text}</p> : <span className="typing-dots" role="status" aria-label="Preparing a reply"><i /><i /><i /></span>}{turn.progress && <span className="assistant-progress" role="status">{turn.progress}</span>}</div> : null) : failed ? <div className="entry-error"><p>{operation?.error || entry.error || 'Couldn’t finish this entry.'}</p>{operation?.errorCode && <small className="entry-error-details">{operation.errorCode}{operation.stage ? ` · ${operation.stage}` : ''}{operation.requestId ? ` · Request ${operation.requestId}` : ''}</small>}<AsyncButton className="text-button" onClick={() => retry(entry.id)}><RotateCw size={14} /> Retry</AsyncButton></div> : <>
         {reply ? <p className="conversation-answer">{entry.reply}</p> : null}
@@ -30,6 +30,7 @@ export function Entry({ entry, onMemory, onEntry }) {
       </>}
     </motion.div>
     <div className="conversation-request" aria-label="You"><p>{entry.text}</p></div>
+    {pending && !turn?.reply && <span className="message-receipt" role="status" aria-label="Processing message"><Loader2 size={12} className="spin" /></span>}
     {showReceipt && <span className="message-receipt"><Check size={12} />Saved</span>}
   </motion.article>
 }

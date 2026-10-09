@@ -5,7 +5,7 @@ import { request, setToken } from '../lib/api'
 import { reconcileNotifications, clearNotifications } from '../lib/notifications'
 import { effectiveReminders } from '../../shared/reminders'
 import { SocialLogin } from '@capgo/capacitor-social-login'
-let writes = Promise.resolve(), syncing = false, authenticating = false, epoch = 0, retryTimer, syncFailures = 0
+let writes = Promise.resolve(), syncing = false, authenticating = false, epoch = 0, retryTimer, syncFailures = 0, accountCheckedAt = 0, lastPulledAt = 0
 export const useMemory = create(() => ({ ready: false, signingIn: false, preparingSignIn: false, user: null, data: emptyState(), syncing: false, error: null, online: navigator.onLine, needsSignIn: false, sessionVersion: 0, turns: {} }))
 function update(fn) {
   const generation = epoch
@@ -61,6 +61,7 @@ async function authenticate(expectedUserId) {
     await request('/api/auth/sign-out', { method: 'POST', data: {}, authToken: session.token })
     throw new Error('Use the same Apple account to confirm deletion.')
   }
+  accountCheckedAt = 0; lastPulledAt = 0
   epoch++
   await writes
   await writeSession(session)
@@ -72,6 +73,7 @@ export async function signOut({ deleted = false } = {}) {
   if (syncing) throw new Error('Wait for syncing to finish before signing out.')
   const current = useMemory.getState()
   if (!deleted) await request('/api/auth/sign-out', { method: 'POST', data: {} })
+  accountCheckedAt = 0; lastPulledAt = 0
   epoch++
   clearTimeout(retryTimer)
   await writes
@@ -90,6 +92,7 @@ export async function deleteAccount() {
 }
 export async function setConsent(consent) {
   await request('/api/account', { method: 'POST', data: { consent } })
+  accountCheckedAt = Date.now()
   await update(data => ({ ...data, consent }))
   if (consent) void sync()
 }
@@ -130,21 +133,26 @@ export async function discardOperation(id) {
     return { ...state, entries, outbox: state.outbox.filter(o => o.id !== id) }
   })
 }
-export async function sync() {
+export async function sync({ passive = false } = {}) {
   const initial = useMemory.getState()
   if (syncing || authenticating || !initial.user || !initial.online || initial.needsSignIn) return
+  if (passive && Date.now() - lastPulledAt < 30000 && !initial.data.outbox.some(o => !o.error)) return
   syncing = true
+  clearTimeout(retryTimer)
   useMemory.setState({ syncing: true, error: null })
   const generation = epoch
   try {
-    const account = await request('/api/account', { timeout: 20000 })
-    if (generation !== epoch) return
+    if (Date.now() - accountCheckedAt >= 300000) {
+      const account = await request('/api/account', { timeout: 20000 })
+      if (generation !== epoch) return
+      await update(data => ({ ...data, consent: account.consent }))
+      accountCheckedAt = Date.now()
+    }
     syncFailures = 0
-    await update(data => ({ ...data, consent: account.consent }))
-    // Pull before pushing so conflicts can be shown against current server records.
-    await pull()
+    // Edits need current versions; fresh capture-only batches can reuse the last pull.
+    if (Date.now() - lastPulledAt >= 30000 || initial.data.outbox.some(o => !o.error && o.action !== 'capture')) await pull()
     let next
-    while ((next = useMemory.getState().data.outbox.find(o => !o.error && (o.action !== 'capture' || account.consent)))) {
+    while ((next = useMemory.getState().data.outbox.find(o => !o.error && (o.action !== 'capture' || useMemory.getState().data.consent)))) {
       try {
         if (next.action === 'capture') useMemory.setState(state => ({ turns: { ...state.turns, [next.id]: {} } }))
         const result = await request('/api/memory', { method: 'POST', data: { action: next.action, data: next.data }, ...(next.action === 'capture' ? { onEvent: event => {
@@ -172,7 +180,7 @@ export async function sync() {
         useMemory.setState(state => { const turns = { ...state.turns }; delete turns[next.id]; return { turns } })
         if (error.status === 401) throw error
         if (!useMemory.getState().online) break
-        const transient = !['AI_SETUP_REQUIRED', 'DATABASE_SETUP_REQUIRED'].includes(error.code) && (!error.status || error.status === 429 || error.status === 503 || (error.status === 409 && !error.conflict))
+        const transient = !['AI_SETUP_REQUIRED', 'AI_REQUEST_INVALID', 'AI_INVALID_PLAN', 'DATABASE_SETUP_REQUIRED'].includes(error.code) && (!error.status || error.status === 429 || error.status === 503 || (error.status === 409 && !error.conflict))
         if (transient && (next.attempts || 0) < 3) {
           await update(data => ({ ...data, outbox: data.outbox.map(o => o.id === next.id ? { ...o, attempts: (o.attempts || 0) + 1 } : o) }))
           retryTimer = setTimeout(() => void sync(), 2000 * 2 ** (next.attempts || 0))
@@ -194,4 +202,5 @@ async function pull() {
     result = await request(`/api/sync?cursor=${useMemory.getState().data.cursor}`, { timeout: 20000 })
     await update(data => applySync(data, result.changes, result.cursor))
   } while (result.more)
+  lastPulledAt = Date.now()
 }

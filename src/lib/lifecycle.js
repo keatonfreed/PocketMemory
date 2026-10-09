@@ -7,14 +7,14 @@ import { native } from './storage'
 import { useMemory, sync } from '../state/memory'
 export async function startLifecycle(onReminder) {
   const listeners = []
-  const change = status => { useMemory.setState({ online: status.connected }); if (status.connected) void sync() }
+  const change = status => { useMemory.setState({ online: status.connected }); if (status.connected) void sync({ passive: true }) }
   change(await Network.getStatus())
   listeners.push(await Network.addListener('networkStatusChange', change))
   if (native) {
-    listeners.push(await App.addListener('appStateChange', ({ isActive }) => { if (isActive) void sync() }))
+    listeners.push(await App.addListener('appStateChange', ({ isActive }) => { if (isActive) void sync({ passive: true }) }))
     const showKeyboard = ({ keyboardHeight }) => {
       keyboardWasOpen = true
-      pendingHide = false; pendingClamp = false
+      pendingClamp = false
       clearTimeout(restoreTimer)
       document.body.style.setProperty('--keyboard-height', `${keyboardHeight}px`)
       document.body.classList.add('keyboard-open')
@@ -29,7 +29,7 @@ export async function startLifecycle(onReminder) {
         } else if (bounds.bottom > keyboardTop) field.scrollIntoView({ block: 'nearest', behavior: 'instant' })
       })
     }
-    let keyboardWasOpen = false, restoreTimer, touching = false, pendingHide = false, pendingClamp = false
+    let keyboardWasOpen = false, restoreTimer, touching = false, pendingClamp = false
     const clampScroll = () => {
       if (touching) { pendingClamp = true; return }
       pendingClamp = false
@@ -41,8 +41,6 @@ export async function startLifecycle(onReminder) {
       if (window.scrollX || window.scrollY) window.scrollTo({ top: 0, left: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
     }
     const hideKeyboard = () => {
-      if (touching && keyboardWasOpen) { pendingHide = true; return }
-      pendingHide = false
       document.body.classList.remove('keyboard-open')
       document.body.style.removeProperty('--keyboard-height')
       if (keyboardWasOpen) {
@@ -76,8 +74,7 @@ export async function startLifecycle(onReminder) {
       touching = e.touches.length > 0
       if (touching) return
       gesture = null
-      if (pendingHide) hideKeyboard()
-      else if (pendingClamp) requestAnimationFrame(clampScroll)
+      if (pendingClamp) requestAnimationFrame(clampScroll)
     }
     const clickFeedback = e => {
       if (e.target.closest('button:not(:disabled), input[type="checkbox"]')) softHaptic()

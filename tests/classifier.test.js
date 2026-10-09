@@ -35,3 +35,19 @@ test('large Jev context fits its budget without clipping the original or recent 
   assert.equal(compact.historyTruncated, true)
   assert.ok(compact.memories.length)
 })
+
+test('standalone greetings respond immediately without a Jev call; mixed requests still use Jev', async () => {
+  for (const message of ['hi', 'Hey!', "what’s up?", 'how are you']) {
+    const result = await classify({ message }, { fetcher: () => assert.fail('Greeting should not call Jev') })
+    assert.deepEqual(routingDecision(result), { reply: true, actions: false })
+  }
+  const previous = process.env.TYPESAFE_API_KEY
+  process.env.TYPESAFE_API_KEY = 'local-test-placeholder'
+  try {
+    for (const message of ['hi, remind me to call Mom', 'I like potatoes']) {
+      let called = false
+      await assert.rejects(classify({ message }, { fetcher: async () => { called = true; throw new Error('reached Jev') } }), /reached Jev/)
+      assert.equal(called, true)
+    }
+  } finally { if (previous === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = previous }
+})

@@ -29,9 +29,10 @@ async function runTurn(client, userId, capture, { ai, classifier = classify, onE
   const personalContext = await retrieve.context(capture)
   const clock = { now: new Date().toISOString(), submittedAt: capture.createdAt, timezone: capture.timezone, localTime: new Date().toLocaleString('en-US', { timeZone: capture.timezone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }
   trace.stage = 'classification'
+  const classificationStarted = Date.now()
   const classification = await classifier({ message: capture.text, ...clock, ...personalContext }, { signal })
   const routing = routingDecision(classification)
-  onEvent?.({ type: 'decision', ...routing })
+  onEvent?.({ type: 'decision', ...routing, classificationMs: Date.now() - classificationStarted, greeting: Boolean(classification.greeting) })
   if (!routing.reply && !routing.actions) return { plan: { reply: '', sources: [], changes: [], reminders: [] }, webSources: [], classification }
   if (!ai && !process.env.OPENAI_API_KEY) throw Object.assign(new Error('The assistant is not configured yet. Your entry is saved.'), { status: 503, code: 'AI_SETUP_REQUIRED' })
   ai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 90000, maxRetries: 1 })
@@ -71,7 +72,15 @@ async function runTurn(client, userId, capture, { ai, classifier = classify, onE
       }
       throw Object.assign(new Error('The assistant did not complete the response. Your entry is saved; please retry.'), { status: 503, code: 'AI_INCOMPLETE' })
     }
-    input.push(...response.output)
+    // Streaming helpers attach local parsing fields that the API rejects on replay.
+    input.push(...response.output.map(item => {
+      const wire = { ...item }; delete wire.parsed_arguments
+      if (wire.content) wire.content = wire.content.map(content => {
+        const part = { ...content }; delete part.parsed
+        return part
+      })
+      return wire
+    }))
     for (const item of response.output) {
       for (const content of item.content || []) for (const citation of content.annotations || []) {
         if (citation.type === 'url_citation' && /^https?:\/\//.test(citation.url)) webSources.set(citation.url, { url: citation.url, title: citation.title || citation.url })
@@ -119,6 +128,7 @@ export async function runAgent(client, userId, capture, options = {}) {
     if (['TimeoutError', 'AbortError', 'APIConnectionTimeoutError'].includes(error.name)) throw Object.assign(new Error('AI processing timed out. Your entry is saved; please retry.'), { ...details, status: 503, code: 'AI_TIMEOUT' })
     if (error.name === 'ZodError' || error instanceof SyntaxError) throw Object.assign(new Error('AI returned an invalid result. Your entry is saved; please retry.'), { ...details, status: 503, code: 'AI_INVALID_RESULT' })
     if (error.status === 429) throw Object.assign(new Error('AI is busy right now. Your entry is saved; please retry shortly.'), { ...details, status: 503, code: 'AI_BUSY' })
+    if (error.status === 400 && ['unknown_parameter', 'unsupported_parameter', 'invalid_json_schema'].includes(error.code)) throw Object.assign(new Error('The assistant request was rejected by the AI provider. Your entry is saved; the server integration needs an update.'), { ...details, status: 503, code: 'AI_REQUEST_INVALID' })
     if ([400, 401, 403, 404].includes(error.status)) throw Object.assign(new Error('The AI provider is not configured correctly on the server. Your entry is saved.'), { ...details, status: 503, code: 'AI_SETUP_REQUIRED' })
     if (error.status >= 500 && !error.code?.startsWith('AI_')) throw Object.assign(new Error('AI processing is temporarily unavailable. Your entry is saved; please retry.'), { ...details, status: 503, code: 'AI_UNAVAILABLE' })
     throw error

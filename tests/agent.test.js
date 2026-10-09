@@ -82,7 +82,8 @@ test('filler skips OpenAI entirely and still exposes the saved decision', async 
   const classifier = async () => ({ reply: { noul: .01 }, actions: { noul: .01 } })
   const result = await runAgent(client, user, capture, { ai, classifier, onEvent: e => events.push(e) })
   assert.equal(result.plan.reply, '')
-  assert.deepEqual(events, [{ type: 'decision', reply: false, actions: false }])
+  assert.equal(events.length, 1)
+  assert.deepEqual({ type: events[0].type, reply: events[0].reply, actions: events[0].actions }, { type: 'decision', reply: false, actions: false })
 })
 test('streams decoded reply text while preserving a validated final plan', async () => {
   const events = []
@@ -130,4 +131,26 @@ test('both Jev and GPT receive chronological history with exact recent messages 
     return { status: 'completed', output: [], output_text: JSON.stringify(plan) }
   } } }
   await runAgent(contextClient, user, capture, { ai, classifier })
+})
+
+test('streamed tool and repair continuations exclude SDK parsing fields', async () => {
+  let calls = 0
+  const events = []
+  const ai = { responses: { stream: request => {
+    calls++
+    assert.ok(!JSON.stringify(request.input).includes('parsed_arguments'))
+    assert.ok(!JSON.stringify(request.input).includes('"parsed":'))
+    const response = calls === 1
+      ? { status: 'completed', output: [{ type: 'function_call', name: 'search_history', call_id: 'call1', arguments: '{"query":"tea","before":null,"after":null}', parsed_arguments: { query: 'tea' } }] }
+      : calls === 2
+        ? { status: 'completed', output_text: '{}', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '{}', parsed: {} }] }] }
+        : { status: 'completed', output: [], output_text: JSON.stringify(plan) }
+    return { async *[Symbol.asyncIterator]() {}, finalResponse: async () => response }
+  } } }
+  assert.equal((await runAgent(client, user, capture, { ai, classifier, onEvent: e => events.push(e) })).plan.reply, plan.reply)
+  assert.equal(calls, 3)
+})
+test('unsupported provider parameters keep actionable diagnostics and avoid setup misclassification', async () => {
+  const ai = { responses: { create: async () => { throw Object.assign(new Error('Unsupported field'), { status: 400, code: 'unknown_parameter', param: 'input[3].parsed_arguments' }) } } }
+  await assert.rejects(runAgent(client, user, capture, { ai, classifier }), error => error.code === 'AI_REQUEST_INVALID' && error.cause.param === 'input[3].parsed_arguments')
 })

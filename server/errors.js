@@ -16,10 +16,20 @@ export function appleExchangeError(code) {
 // Structural diagnostics only: never include SQL, inputs, credentials, or provider bodies.
 export function safeDiagnostics(error) {
   const cause = error.cause || error
+  const validationMessages = new Set([
+    'Memory evidence must be copied from the original entry', 'Reminder evidence must be copied from the original entry',
+    'Unknown memory update target', 'Unknown reminder target', 'Answer references unseen evidence',
+    'Multiple updates to the same memory', 'Multiple changes to the same reminder',
+    'New memory must not have a target ID', 'New reminder must not have a target ID',
+    'Reminder must be in the future', 'Repeating reminder must start at the next matching daily or weekly occurrence',
+    'Read full memory before updating or deleting it', 'Read full reminder before updating or deleting it',
+  ])
   return {
+    ...(validationMessages.has(cause.message) ? { validationReason: cause.message } : {}),
     name: error.name,
     stage: error.stage || 'request',
     ...(cause.code && /^[A-Za-z0-9_]+$/.test(cause.code) ? { causeCode: cause.code } : {}),
+    ...(typeof cause.param === 'string' && /^[a-zA-Z0-9_.[\]-]{1,180}$/.test(cause.param) ? { parameter: cause.param } : {}),
     ...(cause.issues ? { issues: cause.issues.slice(0, 8).map(issue => ({ code: issue.code, path: issue.path.filter(part => typeof part === 'number' || /^[a-zA-Z_]+$/.test(part)).join('.') })) } : {}),
     ...(cause.stack?.match(/(?:server|shared|api)\/[\w.-]+\.js:\d+:\d+/)?.[0] ? { location: cause.stack.match(/(?:server|shared|api)\/[\w.-]+\.js:\d+:\d+/)[0] } : {}),
   }

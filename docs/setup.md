@@ -199,3 +199,7 @@ Run `npm run db:migrate` with the intended database configuration to add missing
 Deploy the updated backend to enable streamed responses, then run `npm run ios:sync` and rebuild from Xcode for the new interface. Updating only the phone cannot enable streaming on an older backend.
 
 In Xcode’s debug console, search for `[Pocket Memory] server_error`. It includes the error code, stage, request ID, and structural diagnostics. Match that request ID in Vercel runtime logs (`capture_failed` or `request_failed`). Diagnostics exclude message content and credentials. `streaming_unavailable` indicates the server returned an older JSON response instead of a stream.
+
+Foreground and network events reuse a successful sync for 30 seconds when no work is queued. Account consent checks are reused for five minutes within the same signed-in session; local consent changes apply immediately, and the server still enforces consent for every AI capture. Captures still fetch committed state before their queue entry is removed; edits pull current versions before sending.
+
+Xcode also logs `[Pocket Memory] capture_status` with the request ID, reply/action routing, and classification duration, without message content. Provider errors now include the rejected parameter when available; validation errors include safe structural reasons. Standalone greetings bypass Jev classification and request a short reply.

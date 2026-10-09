@@ -15,3 +15,8 @@
 .reminder-details .reminder-body { display: block; margin-top: 4px; color: var(--text-muted, #8a91a0); font-size: 13px; }
 @keyframes assistant-dot { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .typing-dots i { animation: none; } }
+
+/* Quiet captures remain compact; response turns keep their existing separation. */
+.conversation-entry.conversation-quiet { padding: 4px 0 7px; gap: 5px; }
+.conversation-response { background: rgba(255, 255, 255, .045); }
+.conversation-request { background: linear-gradient(130deg, #1b2940, #162337); }
